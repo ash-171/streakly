@@ -470,8 +470,13 @@ document.getElementById("testApiBtn").addEventListener("click", async () => {
   const model = document.getElementById("setTextModel").value.trim() || "gpt-oss:120b";
   showToast("Testing…");
   try {
-    const result = await callOllamaChat(model, [{ role: "user", content: "Reply with only the word: ok" }]);
-    showToast("Connected ✓ — AI responded successfully.");
+    const resp = await fetch(getOllamaUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({ model, messages: [{ role: "user", content: "ok" }], stream: false })
+    });
+    if (!resp.ok) throw new Error(`Error ${resp.status}`);
+    showToast("Connected ✓");
   } catch (err) {
     // Show full error message so user can diagnose (CORS vs auth vs model)
     showToast(err.message || "Connection failed.");
