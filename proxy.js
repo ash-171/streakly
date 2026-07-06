@@ -7,57 +7,30 @@
  * through the proxy to ollama.com unchanged.
  */
 
-const http  = require("http");
-const https = require("https");
+export default {
+  async fetch(req) {
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type,Authorization"
+        }
+      });
+    }
+    const url = new URL(req.url);
+    const target = "https://ollama.com" + url.pathname + url.search;
+    const headers = new Headers();
+    headers.set("Content-Type", req.headers.get("Content-Type") || "application/json");
+    if (req.headers.get("Authorization")) headers.set("Authorization", req.headers.get("Authorization"));
 
-const PORT   = 11435;
-const TARGET = "ollama.com";
-
-const CORS = {
-  "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization"
-};
-
-const server = http.createServer((req, res) => {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
-
-  // Preflight
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  const opts = {
-    hostname: TARGET,
-    port:     443,
-    path:     req.url,
-    method:   req.method,
-    headers:  { ...req.headers, host: TARGET }
-  };
-
-  const proxy = https.request(opts, (upstream) => {
-    // Forward upstream CORS-safe headers; our own CORS headers already set
-    const forward = {};
-    ["content-type", "content-length"].forEach(h => {
-      if (upstream.headers[h]) forward[h] = upstream.headers[h];
+    const resp = await fetch(target, {
+      method: req.method,
+      headers,
+      body: req.method !== "GET" ? await req.text() : undefined
     });
-    res.writeHead(upstream.statusCode, { ...forward, ...CORS });
-    upstream.pipe(res, { end: true });
-  });
-
-  proxy.on("error", (err) => {
-    console.error("Proxy error:", err.message);
-    res.writeHead(502, CORS);
-    res.end(JSON.stringify({ error: "Proxy could not reach ollama.com: " + err.message }));
-  });
-
-  req.pipe(proxy, { end: true });
-});
-
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`✓ Streakly proxy listening on http://localhost:${PORT}`);
-  console.log(`  In the app: Settings → API Base URL → http://localhost:${PORT}`);
-  console.log(`  Press Ctrl+C to stop.\n`);
-});
+    const newResp = new Response(resp.body, resp);
+    newResp.headers.set("Access-Control-Allow-Origin", "*");
+    return newResp;
+  }
+};
