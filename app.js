@@ -14,7 +14,8 @@ const DEFAULTS = {
     calorieGoal: 2000,
     sugarLimit: 25,
     notifEnabled: false,
-    notifiedDates: []
+    notifiedDates: [],
+    streakResetAt: null // dateKey string; streak calc ignores days at/before this
   },
   entries: [] // {id, ts, dateKey, name, calories, sugar, source}
 };
@@ -74,12 +75,25 @@ function totalsForDate(key) {
   return { cal, sugar, count };
 }
 
+/*
+  Streak is fully derived (not stored as a counter), so it naturally
+  "resets daily": every time renderHome() runs — including on the very
+  first load of a new day — this walks backward from today through
+  state.entries and stops the moment it hits a day with no entries or
+  a day over the sugar limit. There is no separate timer/cron needed.
+
+  streakResetAt is an optional manual cut-off (set via "Reset streak
+  only" in Settings) — any day at or before that date is ignored, so
+  a user can zero out their streak without touching their food log.
+*/
 function computeStreak() {
   const limit = state.settings.sugarLimit;
+  const resetAt = state.settings.streakResetAt;
   const datesWithEntries = new Set(state.entries.map(e => e.dateKey));
   let key = dateKey();
   let streak = 0;
   for (let i = 0; i < 3650; i++) {
+    if (resetAt && key <= resetAt) break;
     if (!datesWithEntries.has(key)) {
       if (i > 0) break; // past day with no entries — stop streak
       key = shiftKey(key, -1);
@@ -193,6 +207,9 @@ function attachDeleteHandlers(container) {
   });
 }
 
+/* History is grouped datewise: every entry stores its own dateKey at
+   creation time (see saveEntry), and this groups + sorts by that key,
+   newest date first, with each day's entries newest-first within it. */
 function renderHistory() {
   const el = document.getElementById("historyList");
   if (!state.entries.length) {
@@ -492,6 +509,16 @@ document.getElementById("enableNotifBtn").addEventListener("click", async () => 
   showToast(perm === "granted" ? "Calorie alerts enabled." : "Permission not granted.");
 });
 
+/* Reset ONLY the streak counter — keeps all logged entries/history intact. */
+document.getElementById("resetStreakBtn").addEventListener("click", () => {
+  const current = computeStreak();
+  if (!confirm(`Reset your current ${current}-day streak to 0? Your logged entries and history will NOT be deleted.`)) return;
+  state.settings.streakResetAt = dateKey();
+  saveData();
+  renderHome();
+  showToast("Streak reset.");
+});
+
 document.getElementById("exportBtn").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -522,8 +549,9 @@ document.getElementById("importFile").addEventListener("change", (e) => {
   };
   reader.readAsText(file);
 });
+/* Full wipe — erases entries AND settings (including the API key). */
 document.getElementById("resetBtn").addEventListener("click", () => {
-  if (!confirm("Erase all entries and settings? This can't be undone.")) return;
+  if (!confirm("Erase ALL entries and settings (including your API key)? This can't be undone.")) return;
   state = structuredClone(DEFAULTS);
   saveData();
   loadSettingsForm();
