@@ -8,8 +8,8 @@ const STORE_KEY = "streakly_data_v1";
 const DEFAULTS = {
   settings: {
     apiKey: "",
-    apiBase: "https://ollama.com",
-    visionModel: "qwen3.5:397b-cloud",
+    apiBase: "https://shrill-paper-0d87.mailaswathits.workers.dev/",
+    visionModel: "gemma4:cloud",
     textModel: "gpt-oss:120b-cloud",
     calorieGoal: 2000,
     sugarLimit: 25,
