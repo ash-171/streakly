@@ -205,24 +205,28 @@ textarea { resize: vertical; min-height: 70px; }
   position: fixed; bottom: 0; left: 0; right: 0;
   max-width: 480px; margin: 0 auto;
   background: var(--surface); border-top: 1px solid var(--border);
-  display: flex; padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 8px 20px calc(8px + env(safe-area-inset-bottom));
 }
+.tab-group { display: flex; gap: 28px; }
 .tab {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
   background: none; border: none; color: var(--text-muted); font-family: var(--font);
   font-size: 11px; padding: 6px 0; cursor: pointer;
 }
 .tab svg { width: 21px; height: 21px; }
 .tab.active { color: var(--cal); }
-.tab.fab { color: var(--bg); padding-top: 0; justify-content: flex-start; }
+.tab.fab {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  color: var(--bg);
+}
 .tab.fab .fabcircle {
   width: 50px; height: 50px; border-radius: 50%; background: var(--cal);
   display: flex; align-items: center; justify-content: center;
-  margin-top: -14px; /* lift above tab bar line */
   box-shadow: 0 4px 14px rgba(45,212,191,0.35);
 }
 .tab.fab svg { width: 24px; height: 24px; }
-.tab.fab span { display: none; } /* hide "Add" label, circle is self-evident */
+.tab.fab span { display: none; }
 
 /* ---------- Modal (confirm AI result) ---------- */
 .modal-bg {
