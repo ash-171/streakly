@@ -20,7 +20,11 @@
     <label>Email</label>
     <input type="email" id="loginEmail" placeholder="you@example.com">
     <label>Password</label>
-    <input type="password" id="loginPassword" placeholder="••••••••">
+    <div class="pw-wrap">
+      <input type="password" id="loginPassword" placeholder="••••••••">
+      <button type="button" id="togglePw" class="pw-toggle">👁</button>
+    </div>
+    <div class="hint">Use 8+ characters with a mix of letters, numbers & symbols.</div>
     <button class="btn" id="loginBtn" style="margin-top:14px;">Sign in</button>
     <button class="btn secondary" id="signupBtn" style="margin-top:10px;">Create account</button>
     <div class="hint" id="loginError" style="color:var(--sugar-over);margin-top:10px;"></div>
@@ -144,6 +148,7 @@
       <h2>Account</h2>
       <div class="hint" id="accountEmail">—</div>
       <button class="btn secondary" id="logoutBtn" style="margin-top:12px;">Sign out</button>
+      <button class="btn danger" id="deleteAccountBtn" style="margin-top:10px;">Delete account</button>
     </div>
 
     <div class="card">
