@@ -1,9 +1,10 @@
-const CACHE = "streakly-v1";
+const CACHE = "streakly-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./firebase-config.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png"
@@ -25,8 +26,12 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  // Never cache API calls to Ollama — always go to network.
+  // Never cache API/auth/DB calls — always go straight to network.
   if (url.hostname.includes("ollama.com")) return;
+  if (url.hostname.includes("workers.dev")) return;
+  if (url.hostname.includes("googleapis.com")) return;
+  if (url.hostname.includes("firebaseio.com")) return;
+  if (url.hostname.includes("firebaseapp.com")) return;
   if (e.request.method !== "GET") return;
 
   e.respondWith(
