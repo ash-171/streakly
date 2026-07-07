@@ -85,6 +85,15 @@ async function loadFromCloud() {
 const loginScreen = document.getElementById("loginScreen");
 const appRoot = document.getElementById("app");
 
+document.getElementById("togglePw").addEventListener("click", () => {
+  const pw = document.getElementById("loginPassword");
+  pw.type = pw.type === "password" ? "text" : "password";
+});
+
+function isStrongPassword(pw) {
+  return pw.length >= 8 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);
+}
+
 document.getElementById("loginBtn").addEventListener("click", () => {
   const email = document.getElementById("loginEmail").value.trim();
   const pw = document.getElementById("loginPassword").value;
@@ -97,11 +106,30 @@ document.getElementById("signupBtn").addEventListener("click", () => {
   const email = document.getElementById("loginEmail").value.trim();
   const pw = document.getElementById("loginPassword").value;
   document.getElementById("loginError").textContent = "";
+  if (!isStrongPassword(pw)) {
+    document.getElementById("loginError").textContent = "Password must be 8+ characters with letters and numbers.";
+    return;
+  }
   auth.createUserWithEmailAndPassword(email, pw).catch((e) => {
     document.getElementById("loginError").textContent = e.message;
   });
 });
 document.getElementById("logoutBtn").addEventListener("click", () => auth.signOut());
+document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
+  if (!confirm("Permanently delete your account and ALL data? This can't be undone.")) return;
+  try {
+    if (uid) await db.collection("users").doc(uid).delete();
+    localStorage.removeItem(cacheKey());
+    await auth.currentUser.delete();
+    showToast("Account deleted.");
+  } catch (e) {
+    if (e.code === "auth/requires-recent-login") {
+      alert("For security, please sign out and sign in again, then retry deleting your account.");
+    } else {
+      showToast(e.message || "Delete failed.");
+    }
+  }
+});
 
 auth.onAuthStateChanged(async (user) => {
   if (user) {
