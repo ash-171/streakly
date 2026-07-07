@@ -38,6 +38,9 @@ body {
 }
 .login-card h1 { margin: 0 0 6px; font-size: 22px; }
 .login-card .hint { margin-bottom: 18px; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 40px; }
+.pw-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; }
 
 #app {
   max-width: 480px;
