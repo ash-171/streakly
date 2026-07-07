@@ -1,9 +1,8 @@
 /* ============================================================
-   Streakly — local-first calorie & added-sugar tracker
-   Data lives in localStorage only. AI calls go to Ollama Cloud.
+   Streakly — calorie & added-sugar tracker
+   Synced to Firebase (Auth + Firestore) per signed-in user.
+   localStorage is used only as an offline cache.
    ============================================================ */
-
-const STORE_KEY = "streakly_data_v1";
 
 const DEFAULTS = {
   settings: {
@@ -20,31 +19,104 @@ const DEFAULTS = {
   entries: [] // {id, ts, dateKey, name, calories, sugar, source}
 };
 
-function loadData() {
+let state = structuredClone(DEFAULTS);
+let uid = null;
+let saveTimer = null;
+
+/* ---------------- Firebase ---------------- */
+firebase.initializeApp(window.firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+function cacheKey() { return `streakly_cache_${uid}`; }
+
+function loadLocalCache() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return structuredClone(DEFAULTS);
+    const raw = localStorage.getItem(cacheKey());
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     return {
       settings: { ...DEFAULTS.settings, ...(parsed.settings || {}) },
       entries: Array.isArray(parsed.entries) ? parsed.entries : []
     };
-  } catch (e) {
-    console.error("load failed", e);
-    return structuredClone(DEFAULTS);
-  }
+  } catch { return null; }
+}
+
+function saveLocalCache() {
+  try { localStorage.setItem(cacheKey(), JSON.stringify(state)); } catch {}
 }
 
 function saveData() {
+  saveLocalCache();
+  if (!uid) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    db.collection("users").doc(uid).set(state, { merge: false }).catch((e) => {
+      console.error("cloud save failed", e);
+      showToast("Saved locally — cloud sync failed.");
+    });
+  }, 500);
+}
+
+async function loadFromCloud() {
+  const cached = loadLocalCache();
+  if (cached) state = cached; // show something instantly
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const doc = await db.collection("users").doc(uid).get();
+    if (doc.exists) {
+      const d = doc.data();
+      state = {
+        settings: { ...DEFAULTS.settings, ...(d.settings || {}) },
+        entries: Array.isArray(d.entries) ? d.entries : []
+      };
+    } else {
+      state = structuredClone(DEFAULTS);
+      await db.collection("users").doc(uid).set(state);
+    }
+    saveLocalCache();
   } catch (e) {
-    console.error("save failed", e);
-    showToast("Couldn't save — storage may be full.");
+    console.error("cloud load failed", e);
+    if (!cached) state = structuredClone(DEFAULTS);
+    showToast("Offline — showing locally cached data.");
   }
 }
 
-let state = loadData();
+/* ---------------- Auth wiring ---------------- */
+const loginScreen = document.getElementById("loginScreen");
+const appRoot = document.getElementById("app");
+
+document.getElementById("loginBtn").addEventListener("click", () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const pw = document.getElementById("loginPassword").value;
+  document.getElementById("loginError").textContent = "";
+  auth.signInWithEmailAndPassword(email, pw).catch((e) => {
+    document.getElementById("loginError").textContent = e.message;
+  });
+});
+document.getElementById("signupBtn").addEventListener("click", () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const pw = document.getElementById("loginPassword").value;
+  document.getElementById("loginError").textContent = "";
+  auth.createUserWithEmailAndPassword(email, pw).catch((e) => {
+    document.getElementById("loginError").textContent = e.message;
+  });
+});
+document.getElementById("logoutBtn").addEventListener("click", () => auth.signOut());
+
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    uid = user.uid;
+    loginScreen.style.display = "none";
+    appRoot.style.display = "flex";
+    document.getElementById("accountEmail").textContent = user.email || "Signed in";
+    await loadFromCloud();
+    initAppUI();
+  } else {
+    uid = null;
+    appRoot.style.display = "none";
+    loginScreen.style.display = "flex";
+  }
+});
 
 /* ---------------- date helpers ---------------- */
 function dateKey(d = new Date()) {
@@ -75,17 +147,9 @@ function totalsForDate(key) {
   return { cal, sugar, count };
 }
 
-/*
-  Streak is fully derived (not stored as a counter), so it naturally
-  "resets daily": every time renderHome() runs — including on the very
-  first load of a new day — this walks backward from today through
-  state.entries and stops the moment it hits a day with no entries or
-  a day over the sugar limit. There is no separate timer/cron needed.
-
-  streakResetAt is an optional manual cut-off (set via "Reset streak
-  only" in Settings) — any day at or before that date is ignored, so
-  a user can zero out their streak without touching their food log.
-*/
+/* Sugar streak is fully independent of the calorie goal — it only
+   ever looks at e.sugar per day vs sugarLimit. Set sugarLimit to 0
+   in Settings to require zero added sugar for the streak to hold. */
 function computeStreak() {
   const limit = state.settings.sugarLimit;
   const resetAt = state.settings.streakResetAt;
@@ -95,9 +159,9 @@ function computeStreak() {
   for (let i = 0; i < 3650; i++) {
     if (resetAt && key <= resetAt) break;
     if (!datesWithEntries.has(key)) {
-      if (i > 0) break; // past day with no entries — stop streak
+      if (i > 0) break;
       key = shiftKey(key, -1);
-      continue; // today has no entries yet, keep streak at 0
+      continue;
     }
     const { sugar } = totalsForDate(key);
     if (sugar <= limit) { streak++; key = shiftKey(key, -1); }
@@ -107,13 +171,7 @@ function computeStreak() {
 }
 
 /* ---------------- rendering ---------------- */
-const ringCalEl = document.getElementById("ringCal");
-const ringSugarEl = document.getElementById("ringSugar");
-const RAD_CAL = 95, RAD_SUGAR = 72;
-const CIRC_CAL = 2 * Math.PI * RAD_CAL;
-const CIRC_SUGAR = 2 * Math.PI * RAD_SUGAR;
-ringCalEl.style.strokeDasharray = `${CIRC_CAL}`;
-ringSugarEl.style.strokeDasharray = `${CIRC_SUGAR}`;
+let ringCalEl, ringSugarEl, CIRC_CAL, CIRC_SUGAR;
 
 function renderHome() {
   const today = dateKey();
@@ -134,35 +192,35 @@ function renderHome() {
 
   const calFrac = Math.min(cal / goal, 1);
   ringCalEl.style.strokeDashoffset = `${CIRC_CAL * (1 - calFrac)}`;
-  const sugarFrac = Math.min(sugar / limit, 1);
+  const sugarFrac = limit > 0 ? Math.min(sugar / limit, 1) : (sugar > 0 ? 1 : 0);
   ringSugarEl.style.strokeDashoffset = `${CIRC_SUGAR * (1 - sugarFrac)}`;
 
   let sugarColor = "var(--sugar-ok)";
   if (sugar > limit) sugarColor = "var(--sugar-over)";
-  else if (sugar > limit * 0.7) sugarColor = "var(--sugar-warn)";
+  else if (limit > 0 && sugar > limit * 0.7) sugarColor = "var(--sugar-warn)";
   ringSugarEl.style.stroke = sugarColor;
   document.getElementById("sugarDot").style.background = sugarColor;
 
-  renderBanner(cal, goal, sugar, limit);
+  renderBanners(cal, goal, sugar, limit);
   renderTodayList(today);
   maybeNotify(cal, goal);
 }
 
-function renderBanner(cal, goal, sugar, limit) {
-  const el = document.getElementById("alertBanner");
+/* Calorie and sugar banners are fully independent — one never
+   mentions the other, matching the two independent systems. */
+function renderBanners(cal, goal, sugar, limit) {
+  const calEl = document.getElementById("alertBannerCal");
+  const sugarEl = document.getElementById("alertBannerSugar");
   const pct = (cal / goal) * 100;
-  let html = "";
-  if (sugar > limit) {
-    html += `<div class="banner over">⚠ Added sugar is over your ${limit}g limit today — streak reset to 0.</div>`;
-  } else if (sugar > limit * 0.7) {
-    html += `<div class="banner warn">You're close to today's ${limit}g sugar limit (${sugar.toFixed(1)}g so far).</div>`;
-  }
-  if (pct >= 100) {
-    html += `<div class="banner over">You've reached ${Math.round(pct)}% of your ${goal} kcal goal today.</div>`;
-  } else if (pct >= 85) {
-    html += `<div class="banner warn">Heads up — ${Math.round(pct)}% of today's ${goal} kcal goal used.</div>`;
-  }
-  el.innerHTML = html;
+  let calHtml = "";
+  if (pct >= 100) calHtml = `<div class="banner over">You've reached ${Math.round(pct)}% of your ${goal} kcal goal today.</div>`;
+  else if (pct >= 85) calHtml = `<div class="banner warn">Heads up — ${Math.round(pct)}% of today's ${goal} kcal goal used.</div>`;
+  calEl.innerHTML = calHtml;
+
+  let sugarHtml = "";
+  if (sugar > limit) sugarHtml = `<div class="banner over">⚠ Added sugar is over your ${limit}g limit today — streak reset to 0.</div>`;
+  else if (limit > 0 && sugar > limit * 0.7) sugarHtml = `<div class="banner warn">You're close to today's ${limit}g sugar limit (${sugar.toFixed(1)}g so far).</div>`;
+  sugarEl.innerHTML = sugarHtml;
 }
 
 function renderTodayList(today) {
@@ -207,17 +265,49 @@ function attachDeleteHandlers(container) {
   });
 }
 
-/* History is grouped datewise: every entry stores its own dateKey at
-   creation time (see saveEntry), and this groups + sorts by that key,
-   newest date first, with each day's entries newest-first within it. */
+/* ---------------- History: month view ---------------- */
+let historyMonthOffset = 0; // 0 = current month, -1 = last month, etc.
+
+function monthBounds(offset) {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const startKey = dateKey(d);
+  const endD = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const endKey = dateKey(endD);
+  const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  return { startKey, endKey, label };
+}
+
+document.getElementById("monthPrevBtn").addEventListener("click", () => { historyMonthOffset--; renderHistory(); });
+document.getElementById("monthNextBtn").addEventListener("click", () => {
+  if (historyMonthOffset < 0) historyMonthOffset++;
+  renderHistory();
+});
+
 function renderHistory() {
+  const { startKey, endKey, label } = monthBounds(historyMonthOffset);
+  document.getElementById("monthLabel").textContent = label;
+  document.getElementById("monthNextBtn").disabled = historyMonthOffset >= 0;
+
+  const monthEntries = state.entries.filter(e => e.dateKey >= startKey && e.dateKey <= endKey);
+  const monthCal = monthEntries.reduce((s, e) => s + e.calories, 0);
+  const byDate = {};
+  for (const e of monthEntries) (byDate[e.dateKey] ||= []).push(e);
+  const limit = state.settings.sugarLimit;
+  const sugarFreeDays = Object.keys(byDate).filter(k => {
+    const sugar = byDate[k].reduce((s, e) => s + e.sugar, 0);
+    return sugar <= limit;
+  }).length;
+
+  document.getElementById("monthCal").textContent = Math.round(monthCal);
+  document.getElementById("monthSugarDays").textContent = sugarFreeDays;
+  document.getElementById("monthEntries").textContent = monthEntries.length;
+
   const el = document.getElementById("historyList");
-  if (!state.entries.length) {
-    el.innerHTML = `<div class="empty">No entries yet.</div>`;
+  if (!monthEntries.length) {
+    el.innerHTML = `<div class="empty">No entries this month.</div>`;
     return;
   }
-  const byDate = {};
-  for (const e of state.entries) (byDate[e.dateKey] ||= []).push(e);
   const keys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
   el.innerHTML = keys.map(key => {
     const items = byDate[key].sort((a, b) => b.ts - a.ts);
@@ -247,7 +337,30 @@ function maybeNotify(cal, goal) {
   }
 }
 
-/* ---------------- navigation ---------------- */
+/* ---------------- daily reminder ---------------- */
+function checkReminder() {
+  const s = state.settings;
+  if (!s.reminderEnabled) return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const today = dateKey();
+  if (s.reminderNotifiedDates.includes(today)) return;
+  const { count } = totalsForDate(today);
+  if (count > 0) return;
+  const [h, m] = (s.reminderTime || "20:00").split(":").map(Number);
+  const now = new Date();
+  const target = new Date(); target.setHours(h, m, 0, 0);
+  if (now < target) return;
+  new Notification("Don't forget to log today", {
+    body: "You haven't logged any food yet today.",
+    icon: "icon-192.png"
+  });
+  s.reminderNotifiedDates.push(today);
+  s.reminderNotifiedDates = s.reminderNotifiedDates.slice(-30);
+  saveData();
+}
+setInterval(checkReminder, 5 * 60 * 1000);
+
+
 const screens = ["home", "history", "add", "settings"];
 function showScreen(name) {
   screens.forEach(s => document.getElementById(`screen-${s}`)?.classList.toggle("active", s === name));
@@ -257,18 +370,6 @@ function showScreen(name) {
   if (name === "history") renderHistory();
   if (name === "home") renderHome();
 }
-document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showScreen(t.dataset.screen)));
-
-/* ---------------- Add screen: mode switching ---------------- */
-const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual" };
-document.getElementById("addModeSeg").addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-  document.querySelectorAll("#addModeSeg button").forEach(b => b.classList.toggle("active", b === btn));
-  Object.entries(modeCards).forEach(([mode, id]) => {
-    document.getElementById(id).style.display = mode === btn.dataset.mode ? "block" : "none";
-  });
-});
 
 /* ---------------- toast ---------------- */
 let toastTimer;
@@ -301,17 +402,10 @@ async function callOllamaChat(model, messages) {
   try {
     resp = await fetch(getOllamaUrl(), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({ model, messages, stream: false })
     });
   } catch (netErr) {
-    // A TypeError here almost always means a CORS block or no internet.
-    // Browser fetch to ollama.com is blocked cross-origin if you serve
-    // the app from a plain file:// or http:// origin without CORS headers.
-    // Host the app on HTTPS (GitHub Pages / Netlify) to resolve CORS.
     throw new Error(
       "Network error — if you're on http:// (not https://), CORS blocks the call. " +
       "Host the app on HTTPS (e.g. GitHub Pages) to fix this. Original: " + netErr.message
@@ -321,12 +415,8 @@ async function callOllamaChat(model, messages) {
   if (!resp.ok) {
     let body = "";
     try { body = await resp.text(); } catch {}
-    if (resp.status === 401 || resp.status === 403) {
-      throw new Error(`Auth failed (${resp.status}) — check your API key.`);
-    }
-    if (resp.status === 404) {
-      throw new Error(`Model not found (404) — check the model name in Settings.`);
-    }
+    if (resp.status === 401 || resp.status === 403) throw new Error(`Auth failed (${resp.status}) — check your API key.`);
+    if (resp.status === 404) throw new Error(`Model not found (404) — check the model name in Settings.`);
     throw new Error(`Ollama API error ${resp.status}: ${body.slice(0, 200)}`);
   }
 
@@ -345,73 +435,17 @@ function fileToBase64(file) {
   });
 }
 
-/* ---------------- Photo flow ---------------- */
 let pendingPhotoBase64 = null;
-
-function handlePhotoFile(file) {
-  if (!file) return;
-  const preview = document.getElementById("photoPreview");
-  preview.src = URL.createObjectURL(file);
-  preview.style.display = "block";
-  document.getElementById("analyzePhotoBtn").style.display = "block";
-  fileToBase64(file).then(b64 => { pendingPhotoBase64 = b64; });
-}
-document.getElementById("cameraInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
-document.getElementById("galleryInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
-
-document.getElementById("analyzePhotoBtn").addEventListener("click", async () => {
-  if (!pendingPhotoBase64) return;
-  const analyzing = document.getElementById("photoAnalyzing");
-  analyzing.style.display = "flex";
-  document.getElementById("analyzePhotoBtn").disabled = true;
-  try {
-    const result = await callOllamaChat(state.settings.visionModel, [
-      { role: "user", content: JSON_INSTRUCTION + "\nIdentify the food in this image and estimate its nutrition.", images: [pendingPhotoBase64] }
-    ]);
-    openConfirmModal(result, "photo", "Estimated from your photo — review before saving.");
-  } catch (err) {
-    showToast(err.message || "Couldn't analyze photo.");
-  } finally {
-    analyzing.style.display = "none";
-    document.getElementById("analyzePhotoBtn").disabled = false;
-  }
-});
-
-/* ---------------- Describe flow ---------------- */
-document.getElementById("analyzeDescribeBtn").addEventListener("click", async () => {
-  const text = document.getElementById("describeInput").value.trim();
-  if (!text) { showToast("Describe what you ate first."); return; }
-  const analyzing = document.getElementById("describeAnalyzing");
-  analyzing.style.display = "flex";
-  document.getElementById("analyzeDescribeBtn").disabled = true;
-  try {
-    const result = await callOllamaChat(state.settings.textModel, [
-      { role: "user", content: `${JSON_INSTRUCTION}\nMeal description: "${text}"` }
-    ]);
-    openConfirmModal(result, "describe", "Estimated from your description — review before saving.");
-  } catch (err) {
-    showToast(err.message || "Couldn't analyze description.");
-  } finally {
-    analyzing.style.display = "none";
-    document.getElementById("analyzeDescribeBtn").disabled = false;
-  }
-});
-
-/* ---------------- Manual flow ---------------- */
-document.getElementById("manualSaveBtn").addEventListener("click", () => {
-  const name = document.getElementById("manName").value.trim() || "Food entry";
-  const cal = parseFloat(document.getElementById("manCal").value) || 0;
-  const sugar = parseFloat(document.getElementById("manSugar").value) || 0;
-  saveEntry({ name, calories: cal, sugar, source: "manual" });
-  document.getElementById("manName").value = "";
-  document.getElementById("manCal").value = "";
-  document.getElementById("manSugar").value = "";
-  showToast("Entry saved.");
-  showScreen("home");
-});
-
-/* ---------------- Confirm modal (AI results) ---------------- */
 let pendingSource = "manual";
+
+function saveEntry({ name, calories, sugar, source }) {
+  const wasOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
+  state.entries.push({ id: crypto.randomUUID(), ts: Date.now(), dateKey: dateKey(), name, calories, sugar, source });
+  saveData();
+  const isOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
+  if (wasOk && !isOk) showToast("⚠ Added sugar limit exceeded — streak reset.");
+}
+
 function openConfirmModal(result, source, note) {
   pendingSource = source;
   document.getElementById("confirmAiNote").textContent = note;
@@ -420,38 +454,12 @@ function openConfirmModal(result, source, note) {
   document.getElementById("confSugar").value = (Math.round((result.sugar_g || 0) * 10) / 10) || 0;
   document.getElementById("confirmModalBg").classList.add("show");
 }
-document.getElementById("confirmCancelBtn").addEventListener("click", () => {
-  document.getElementById("confirmModalBg").classList.remove("show");
-});
-document.getElementById("confirmSaveBtn").addEventListener("click", () => {
-  const name = document.getElementById("confName").value.trim() || "Food entry";
-  const cal = parseFloat(document.getElementById("confCal").value) || 0;
-  const sugar = parseFloat(document.getElementById("confSugar").value) || 0;
-  saveEntry({ name, calories: cal, sugar, source: pendingSource });
-  document.getElementById("confirmModalBg").classList.remove("show");
-  resetAddScreen();
-  showToast("Entry saved.");
-  showScreen("home");
-});
 
 function resetAddScreen() {
   document.getElementById("photoPreview").style.display = "none";
   document.getElementById("analyzePhotoBtn").style.display = "none";
   document.getElementById("describeInput").value = "";
   pendingPhotoBase64 = null;
-}
-
-function saveEntry({ name, calories, sugar, source }) {
-  const wasOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
-  state.entries.push({
-    id: crypto.randomUUID(),
-    ts: Date.now(),
-    dateKey: dateKey(),
-    name, calories, sugar, source
-  });
-  saveData();
-  const isOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
-  if (wasOk && !isOk) showToast("⚠ Added sugar limit exceeded — streak reset.");
 }
 
 /* ---------------- Settings screen ---------------- */
@@ -463,109 +471,222 @@ function loadSettingsForm() {
   document.getElementById("setTextModel").value = s.textModel;
   document.getElementById("setCalGoal").value = s.calorieGoal;
   document.getElementById("setSugarLimit").value = s.sugarLimit;
-}
-function bindSettingsAutosave() {
-  const map = {
-    setApiKey: "apiKey", setApiBase: "apiBase", setVisionModel: "visionModel", setTextModel: "textModel",
-    setCalGoal: "calorieGoal", setSugarLimit: "sugarLimit"
-  };
-  Object.entries(map).forEach(([id, key]) => {
-    document.getElementById(id).addEventListener("change", (e) => {
-      let v = e.target.value;
-      if (key === "calorieGoal" || key === "sugarLimit") v = parseFloat(v) || 0;
-      state.settings[key] = v;
-      saveData();
-      renderHome();
-    });
-  });
+  document.getElementById("setReminderTime").value = s.reminderTime || "20:00";
+  document.getElementById("reminderStatus").textContent = s.reminderEnabled ? "Reminder is on." : "Reminder is off.";
 }
 
-document.getElementById("testApiBtn").addEventListener("click", async () => {
-  const key = document.getElementById("setApiKey").value.trim();
-  if (!key) { showToast("Enter an API key first."); return; }
-  state.settings.apiKey = key; saveData();
-  const model = document.getElementById("setTextModel").value.trim() || "gpt-oss:120b";
-  showToast("Testing…");
-  try {
-    const resp = await fetch(getOllamaUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ model, messages: [{ role: "user", content: "ok" }], stream: false })
+/* ---------------- one-time UI wiring after login ---------------- */
+let uiInitialized = false;
+function initAppUI() {
+  if (uiInitialized) { loadSettingsForm(); renderHome(); renderHistory(); return; }
+  uiInitialized = true;
+
+  ringCalEl = document.getElementById("ringCal");
+  ringSugarEl = document.getElementById("ringSugar");
+  const RAD_CAL = 95, RAD_SUGAR = 72;
+  CIRC_CAL = 2 * Math.PI * RAD_CAL;
+  CIRC_SUGAR = 2 * Math.PI * RAD_SUGAR;
+  ringCalEl.style.strokeDasharray = `${CIRC_CAL}`;
+  ringSugarEl.style.strokeDasharray = `${CIRC_SUGAR}`;
+
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showScreen(t.dataset.screen)));
+
+  const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual" };
+  document.getElementById("addModeSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    document.querySelectorAll("#addModeSeg button").forEach(b => b.classList.toggle("active", b === btn));
+    Object.entries(modeCards).forEach(([mode, id]) => {
+      document.getElementById(id).style.display = mode === btn.dataset.mode ? "block" : "none";
     });
-    if (!resp.ok) throw new Error(`Error ${resp.status}`);
-    showToast("Connected ✓");
-  } catch (err) {
-    // Show full error message so user can diagnose (CORS vs auth vs model)
-    showToast(err.message || "Connection failed.");
-    console.error("Test connection error:", err);
+  });
+
+  document.getElementById("cameraInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
+  document.getElementById("galleryInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
+
+  function handlePhotoFile(file) {
+    if (!file) return;
+    const preview = document.getElementById("photoPreview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+    document.getElementById("analyzePhotoBtn").style.display = "block";
+    fileToBase64(file).then(b64 => { pendingPhotoBase64 = b64; });
   }
-});
 
-document.getElementById("enableNotifBtn").addEventListener("click", async () => {
-  if (!("Notification" in window)) { showToast("Notifications not supported here."); return; }
-  const perm = await Notification.requestPermission();
-  state.settings.notifEnabled = perm === "granted";
-  saveData();
-  showToast(perm === "granted" ? "Calorie alerts enabled." : "Permission not granted.");
-});
-
-/* Reset ONLY the streak counter — keeps all logged entries/history intact. */
-document.getElementById("resetStreakBtn").addEventListener("click", () => {
-  const current = computeStreak();
-  if (!confirm(`Reset your current ${current}-day streak to 0? Your logged entries and history will NOT be deleted.`)) return;
-  state.settings.streakResetAt = dateKey();
-  saveData();
-  renderHome();
-  showToast("Streak reset.");
-});
-
-document.getElementById("exportBtn").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `streakly-backup-${dateKey()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
-document.getElementById("importFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
+  document.getElementById("analyzePhotoBtn").addEventListener("click", async () => {
+    if (!pendingPhotoBase64) return;
+    const analyzing = document.getElementById("photoAnalyzing");
+    analyzing.style.display = "flex";
+    document.getElementById("analyzePhotoBtn").disabled = true;
     try {
-      const parsed = JSON.parse(reader.result);
-      state = {
-        settings: { ...DEFAULTS.settings, ...(parsed.settings || {}) },
-        entries: Array.isArray(parsed.entries) ? parsed.entries : []
-      };
-      saveData();
-      loadSettingsForm();
-      renderHome(); renderHistory();
-      showToast("Backup imported.");
-    } catch {
-      showToast("That file isn't a valid backup.");
+      const result = await callOllamaChat(state.settings.visionModel, [
+        { role: "user", content: JSON_INSTRUCTION + "\nIdentify the food in this image and estimate its nutrition.", images: [pendingPhotoBase64] }
+      ]);
+      openConfirmModal(result, "photo", "Estimated from your photo — review before saving.");
+    } catch (err) {
+      showToast(err.message || "Couldn't analyze photo.");
+    } finally {
+      analyzing.style.display = "none";
+      document.getElementById("analyzePhotoBtn").disabled = false;
     }
-  };
-  reader.readAsText(file);
-});
-/* Full wipe — erases entries AND settings (including the API key). */
-document.getElementById("resetBtn").addEventListener("click", () => {
-  if (!confirm("Erase ALL entries and settings (including your API key)? This can't be undone.")) return;
-  state = structuredClone(DEFAULTS);
-  saveData();
-  loadSettingsForm();
-  renderHome(); renderHistory();
-  showToast("All data erased.");
-});
-
-/* ---------------- init ---------------- */
-loadSettingsForm();
-bindSettingsAutosave();
-renderHome();
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
   });
+
+  document.getElementById("analyzeDescribeBtn").addEventListener("click", async () => {
+    const text = document.getElementById("describeInput").value.trim();
+    if (!text) { showToast("Describe what you ate first."); return; }
+    const analyzing = document.getElementById("describeAnalyzing");
+    analyzing.style.display = "flex";
+    document.getElementById("analyzeDescribeBtn").disabled = true;
+    try {
+      const result = await callOllamaChat(state.settings.textModel, [
+        { role: "user", content: `${JSON_INSTRUCTION}\nMeal description: "${text}"` }
+      ]);
+      openConfirmModal(result, "describe", "Estimated from your description — review before saving.");
+    } catch (err) {
+      showToast(err.message || "Couldn't analyze description.");
+    } finally {
+      analyzing.style.display = "none";
+      document.getElementById("analyzeDescribeBtn").disabled = false;
+    }
+  });
+
+  document.getElementById("manualSaveBtn").addEventListener("click", () => {
+    const name = document.getElementById("manName").value.trim() || "Food entry";
+    const cal = parseFloat(document.getElementById("manCal").value) || 0;
+    const sugar = parseFloat(document.getElementById("manSugar").value) || 0;
+    saveEntry({ name, calories: cal, sugar, source: "manual" });
+    document.getElementById("manName").value = "";
+    document.getElementById("manCal").value = "";
+    document.getElementById("manSugar").value = "";
+    showToast("Entry saved.");
+    showScreen("home");
+  });
+
+  document.getElementById("confirmCancelBtn").addEventListener("click", () => {
+    document.getElementById("confirmModalBg").classList.remove("show");
+  });
+  document.getElementById("confirmSaveBtn").addEventListener("click", () => {
+    const name = document.getElementById("confName").value.trim() || "Food entry";
+    const cal = parseFloat(document.getElementById("confCal").value) || 0;
+    const sugar = parseFloat(document.getElementById("confSugar").value) || 0;
+    saveEntry({ name, calories: cal, sugar, source: pendingSource });
+    document.getElementById("confirmModalBg").classList.remove("show");
+    resetAddScreen();
+    showToast("Entry saved.");
+    showScreen("home");
+  });
+
+  function bindSettingsAutosave() {
+    const map = {
+      setApiKey: "apiKey", setApiBase: "apiBase", setVisionModel: "visionModel", setTextModel: "textModel",
+      setCalGoal: "calorieGoal", setSugarLimit: "sugarLimit"
+    };
+    Object.entries(map).forEach(([id, key]) => {
+      document.getElementById(id).addEventListener("change", (e) => {
+        let v = e.target.value;
+        if (key === "calorieGoal" || key === "sugarLimit") v = parseFloat(v) || 0;
+        state.settings[key] = v;
+        saveData();
+        renderHome();
+      });
+    });
+  }
+  bindSettingsAutosave();
+
+  document.getElementById("testApiBtn").addEventListener("click", async () => {
+    const key = document.getElementById("setApiKey").value.trim();
+    if (!key) { showToast("Enter an API key first."); return; }
+    state.settings.apiKey = key; saveData();
+    const model = document.getElementById("setTextModel").value.trim() || "gpt-oss:120b";
+    showToast("Testing…");
+    try {
+      const resp = await fetch(getOllamaUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "ok" }], stream: false })
+      });
+      if (!resp.ok) throw new Error(`Error ${resp.status}`);
+      showToast("Connected ✓");
+    } catch (err) {
+      showToast(err.message || "Connection failed.");
+      console.error("Test connection error:", err);
+    }
+  });
+
+  document.getElementById("enableNotifBtn").addEventListener("click", async () => {
+    if (!("Notification" in window)) { showToast("Notifications not supported here."); return; }
+    const perm = await Notification.requestPermission();
+    state.settings.notifEnabled = perm === "granted";
+    saveData();
+    showToast(perm === "granted" ? "Calorie alerts enabled." : "Permission not granted.");
+  });
+
+  document.getElementById("resetStreakBtn").addEventListener("click", () => {
+    const current = computeStreak();
+    if (!confirm(`Reset your current ${current}-day streak to 0? Your logged entries and history will NOT be deleted.`)) return;
+    state.settings.streakResetAt = dateKey();
+    saveData();
+    renderHome();
+    showToast("Streak reset.");
+  });
+
+  document.getElementById("setReminderTime").addEventListener("change", (e) => {
+    state.settings.reminderTime = e.target.value;
+    saveData();
+  });
+  document.getElementById("enableReminderBtn").addEventListener("click", async () => {
+    if (!("Notification" in window)) { showToast("Notifications not supported here."); return; }
+    const perm = await Notification.requestPermission();
+    state.settings.reminderEnabled = perm === "granted";
+    saveData();
+    document.getElementById("reminderStatus").textContent = state.settings.reminderEnabled ? "Reminder is on." : "Permission not granted.";
+    showToast(state.settings.reminderEnabled ? "Reminder enabled." : "Permission not granted.");
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `streakly-backup-${dateKey()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+  document.getElementById("importFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        state = {
+          settings: { ...DEFAULTS.settings, ...(parsed.settings || {}) },
+          entries: Array.isArray(parsed.entries) ? parsed.entries : []
+        };
+        saveData();
+        loadSettingsForm();
+        renderHome(); renderHistory();
+        showToast("Backup imported.");
+      } catch {
+        showToast("That file isn't a valid backup.");
+      }
+    };
+    reader.readAsText(file);
+  });
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    if (!confirm("Erase ALL entries and settings (including your API key), on this device and in the cloud? This can't be undone.")) return;
+    state = structuredClone(DEFAULTS);
+    saveData();
+    loadSettingsForm();
+    renderHome(); renderHistory();
+    showToast("All data erased.");
+  });
+
+  loadSettingsForm();
+  renderHome();
+  checkReminder();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
 }
