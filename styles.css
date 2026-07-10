@@ -32,15 +32,20 @@ body {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 20px;
 }
-.login-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 28px 22px; width: 100%; max-width: 380px;
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 20px; width: 100%; }
+.login-wrap { width: 100%; max-width: 720px; margin: 0 auto; }
+.login-title { margin: 0 0 4px; font-size: 24px; text-align: center; }
+.login-panels { display: flex; gap: 16px; }
+.login-panels .login-card { flex: 1; min-width: 0; }
+.panel-title { margin: 0 0 14px; font-size: 15px; color: var(--text); }
+@media (max-width: 640px) {
+  .login-panels { flex-direction: column; }
 }
-.login-card h1 { margin: 0 0 6px; font-size: 22px; }
-.login-card .hint { margin-bottom: 18px; }
 .pw-wrap { position: relative; }
 .pw-wrap input { padding-right: 40px; }
 .pw-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 15px; }
+.login-btn-row { display: flex; gap: 10px; }
+.login-btn-row .btn { width: auto; flex: 1; }
 
 #app {
   max-width: 480px;
@@ -224,6 +229,21 @@ textarea { resize: vertical; min-height: 70px; }
 .entry .meta { font-size: 12px; color: var(--text-muted); font-family: var(--mono); margin-top: 2px; }
 .entry .del { background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 6px; }
 .empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 10px; }
+
+/* ---------- Recipe result ---------- */
+.recipe-card {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 16px; margin-top: 14px;
+}
+.recipe-card h3 { margin: 0 0 4px; font-size: 15px; }
+.recipe-total { font-family: var(--mono); font-size: 13px; color: var(--cal); margin-bottom: 10px; }
+.recipe-ingredients { list-style: none; padding: 0; margin: 0 0 12px; }
+.recipe-ingredients li {
+  display: flex; justify-content: space-between; font-size: 13px;
+  padding: 6px 0; border-bottom: 1px solid var(--border);
+}
+.recipe-ingredients li:last-child { border-bottom: none; }
+.recipe-steps { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0 0 12px; padding-left: 18px; }
 
 /* ---------- Bottom nav ---------- */
 .tabbar {
