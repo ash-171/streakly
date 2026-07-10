@@ -14,20 +14,41 @@
 
 <!-- ================= LOGIN ================= -->
 <div id="loginScreen">
-  <div class="login-card">
-    <h1>Streakly</h1>
-    <p class="hint">Sign in to sync your data across devices.</p>
-    <label>Email</label>
-    <input type="email" id="loginEmail" placeholder="you@example.com">
-    <label>Password</label>
-    <div class="pw-wrap">
-      <input type="password" id="loginPassword" placeholder="••••••••">
-      <button type="button" id="togglePw" class="pw-toggle">👁</button>
+  <div class="login-wrap">
+    <h1 class="login-title">Streakly</h1>
+    <p class="hint" style="text-align:center;margin-bottom:20px;">Sign in to sync your data across devices.</p>
+    <div class="login-panels">
+
+      <div class="login-card">
+        <h2 class="panel-title">Sign in</h2>
+        <label>Email</label>
+        <input type="email" id="signinEmail" placeholder="you@example.com">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="signinPassword" placeholder="••••••••">
+          <button type="button" id="toggleSigninPw" class="pw-toggle">👁</button>
+        </div>
+        <button class="btn" id="loginBtn" style="margin-top:14px;">Sign in</button>
+        <div class="hint" id="signinError" style="color:var(--sugar-over);margin-top:10px;"></div>
+      </div>
+
+      <div class="login-card">
+        <h2 class="panel-title">Create account</h2>
+        <label>Name</label>
+        <input type="text" id="loginName" placeholder="Your name">
+        <label>Email</label>
+        <input type="email" id="signupEmail" placeholder="you@example.com">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="signupPassword" placeholder="••••••••">
+          <button type="button" id="toggleSignupPw" class="pw-toggle">👁</button>
+        </div>
+        <div class="hint">Use 8+ characters with a mix of letters, numbers & symbols.</div>
+        <button class="btn secondary" id="signupBtn" style="margin-top:14px;">Create account</button>
+        <div class="hint" id="signupError" style="color:var(--sugar-over);margin-top:10px;"></div>
+      </div>
+
     </div>
-    <div class="hint">Use 8+ characters with a mix of letters, numbers & symbols.</div>
-    <button class="btn" id="loginBtn" style="margin-top:14px;">Sign in</button>
-    <button class="btn secondary" id="signupBtn" style="margin-top:10px;">Create account</button>
-    <div class="hint" id="loginError" style="color:var(--sugar-over);margin-top:10px;"></div>
   </div>
 </div>
 
@@ -89,6 +110,7 @@
       <button class="active" data-mode="photo">Photo</button>
       <button data-mode="describe">Describe</button>
       <button data-mode="manual">Manual</button>
+      <button data-mode="recipes">Recipes</button>
     </div>
 
     <div class="card" id="modePhoto">
@@ -121,6 +143,15 @@
       <input type="number" id="manSugar" inputmode="numeric" placeholder="0">
       <div class="hint">Only count added sugar — sugar in soda, sweets, syrups — not the natural sugar in fruit or milk.</div>
       <button class="btn" id="manualSaveBtn" style="margin-top:14px;">Save entry</button>
+    </div>
+
+    <div class="card" id="modeRecipes" style="display:none;">
+      <h2>Healthy recipe finder</h2>
+      <label>What kind of recipe?</label>
+      <textarea id="recipeInput" placeholder="e.g. high-protein vegetarian breakfast, under 400 kcal"></textarea>
+      <button class="btn" id="generateRecipeBtn" style="margin-top:12px;">Find a recipe</button>
+      <div class="analyzing" id="recipeAnalyzing"><span class="spinner"></span> Cooking up ideas…</div>
+      <div id="recipeResult"></div>
     </div>
   </section>
 
