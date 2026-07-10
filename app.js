@@ -814,8 +814,49 @@ function initAppUI() {
   loadSettingsForm();
   renderHome();
   checkReminder();
+  maybeShowApiWizard();
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
+
+  function maybeShowApiWizard() {
+    if (state.settings.apiKey) return;
+    document.getElementById("wizardStep1").style.display = "block";
+    document.getElementById("wizardStep2").style.display = "none";
+    document.getElementById("wizardModalBg").classList.add("show");
+  }
+  document.getElementById("wizardNextBtn").addEventListener("click", () => {
+    document.getElementById("wizardStep1").style.display = "none";
+    document.getElementById("wizardStep2").style.display = "block";
+  });
+  document.getElementById("wizardBackBtn").addEventListener("click", () => {
+    document.getElementById("wizardStep2").style.display = "none";
+    document.getElementById("wizardStep1").style.display = "block";
+  });
+  document.getElementById("wizardSkipBtn").addEventListener("click", () => {
+    document.getElementById("wizardModalBg").classList.remove("show");
+  });
+  document.getElementById("wizardTestSaveBtn").addEventListener("click", async () => {
+    const key = document.getElementById("wizardApiKey").value.trim();
+    const statusEl = document.getElementById("wizardStatus");
+    if (!key) { statusEl.textContent = "Paste your key first."; return; }
+    statusEl.textContent = "Testing…";
+    const model = state.settings.textModel || "gpt-oss:120b-cloud";
+    try {
+      const resp = await fetch(getOllamaUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "ok" }], stream: false })
+      });
+      if (!resp.ok) throw new Error(`Error ${resp.status}`);
+      state.settings.apiKey = key;
+      saveData();
+      loadSettingsForm();
+      document.getElementById("wizardModalBg").classList.remove("show");
+      showToast("Connected ✓ — you're all set!");
+    } catch (err) {
+      statusEl.textContent = "Couldn't connect — check your key and try again.";
+    }
+  });
 }
