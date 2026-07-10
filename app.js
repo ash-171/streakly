@@ -22,14 +22,14 @@ const DEFAULTS = {
 let state = structuredClone(DEFAULTS);
 let uid = null;
 let saveTimer = null;
-
+ 
 /* ---------------- Firebase ---------------- */
 firebase.initializeApp(window.firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-
+ 
 function cacheKey() { return `streakly_cache_${uid}`; }
-
+ 
 function loadLocalCache() {
   try {
     const raw = localStorage.getItem(cacheKey());
@@ -41,11 +41,11 @@ function loadLocalCache() {
     };
   } catch { return null; }
 }
-
+ 
 function saveLocalCache() {
   try { localStorage.setItem(cacheKey(), JSON.stringify(state)); } catch {}
 }
-
+ 
 function saveData() {
   saveLocalCache();
   if (!uid) return;
@@ -57,7 +57,7 @@ function saveData() {
     });
   }, 500);
 }
-
+ 
 async function loadFromCloud() {
   const cached = loadLocalCache();
   if (cached) state = cached; // show something instantly
@@ -80,11 +80,11 @@ async function loadFromCloud() {
     showToast("Offline — showing locally cached data.");
   }
 }
-
+ 
 /* ---------------- Auth wiring ---------------- */
 const loginScreen = document.getElementById("loginScreen");
 const appRoot = document.getElementById("app");
-
+ 
 document.getElementById("toggleSigninPw").addEventListener("click", () => {
   const pw = document.getElementById("signinPassword");
   pw.type = pw.type === "password" ? "text" : "password";
@@ -93,11 +93,11 @@ document.getElementById("toggleSignupPw").addEventListener("click", () => {
   const pw = document.getElementById("signupPassword");
   pw.type = pw.type === "password" ? "text" : "password";
 });
-
+ 
 function isStrongPassword(pw) {
   return pw.length >= 8 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);
 }
-
+ 
 ["signinEmail", "signinPassword"].forEach(id => {
   document.getElementById(id).addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("loginBtn").click();
@@ -108,7 +108,7 @@ function isStrongPassword(pw) {
     if (e.key === "Enter") document.getElementById("signupBtn").click();
   });
 });
-
+ 
 document.getElementById("loginBtn").addEventListener("click", () => {
   const email = document.getElementById("signinEmail").value.trim();
   const pw = document.getElementById("signinPassword").value;
@@ -158,7 +158,7 @@ document.getElementById("deleteAccountBtn").addEventListener("click", async () =
     }
   }
 });
-
+ 
 auth.onAuthStateChanged(async (user) => {
   if (user) {
     uid = user.uid;
@@ -171,9 +171,16 @@ auth.onAuthStateChanged(async (user) => {
     uid = null;
     appRoot.style.display = "none";
     loginScreen.style.display = "flex";
+    document.getElementById("signinEmail").value = "";
+    document.getElementById("signinPassword").value = "";
+    document.getElementById("signinError").innerHTML = "";
+    document.getElementById("loginName").value = "";
+    document.getElementById("signupEmail").value = "";
+    document.getElementById("signupPassword").value = "";
+    document.getElementById("signupError").textContent = "";
   }
 });
-
+ 
 /* ---------------- date helpers ---------------- */
 function dateKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -193,7 +200,7 @@ function shiftKey(key, deltaDays) {
   d.setDate(d.getDate() + deltaDays);
   return dateKey(d);
 }
-
+ 
 /* ---------------- derived data ---------------- */
 function totalsForDate(key) {
   let cal = 0, sugar = 0, count = 0;
@@ -202,7 +209,7 @@ function totalsForDate(key) {
   }
   return { cal, sugar, count };
 }
-
+ 
 /* Sugar streak is fully independent of the calorie goal — it only
    ever looks at e.sugar per day vs sugarLimit. Set sugarLimit to 0
    in Settings to require zero added sugar for the streak to hold. */
@@ -225,43 +232,43 @@ function computeStreak() {
   }
   return streak;
 }
-
+ 
 /* ---------------- rendering ---------------- */
 let ringCalEl, ringSugarEl, CIRC_CAL, CIRC_SUGAR;
-
+ 
 function renderHome() {
   const today = dateKey();
   const { cal, sugar, count } = totalsForDate(today);
   const goal = state.settings.calorieGoal;
   const limit = state.settings.sugarLimit;
   const streak = computeStreak();
-
+ 
   document.getElementById("topbarDate").textContent =
     new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-
+ 
   document.getElementById("streakCount").textContent = streak;
   document.getElementById("calNum").textContent = Math.round(cal);
   document.getElementById("calGoalSub").textContent = `of ${goal} kcal`;
   document.getElementById("statCal").textContent = Math.round(cal);
   document.getElementById("statSugar").textContent = `${sugar.toFixed(1)}g`;
   document.getElementById("statEntries").textContent = count;
-
+ 
   const calFrac = Math.min(cal / goal, 1);
   ringCalEl.style.strokeDashoffset = `${CIRC_CAL * (1 - calFrac)}`;
   const sugarFrac = limit > 0 ? Math.min(sugar / limit, 1) : (sugar > 0 ? 1 : 0);
   ringSugarEl.style.strokeDashoffset = `${CIRC_SUGAR * (1 - sugarFrac)}`;
-
+ 
   let sugarColor = "var(--sugar-ok)";
   if (sugar > limit) sugarColor = "var(--sugar-over)";
   else if (limit > 0 && sugar > limit * 0.7) sugarColor = "var(--sugar-warn)";
   ringSugarEl.style.stroke = sugarColor;
   document.getElementById("sugarDot").style.background = sugarColor;
-
+ 
   renderBanners(cal, goal, sugar, limit);
   renderTodayList(today);
   maybeNotify(cal, goal);
 }
-
+ 
 /* Calorie and sugar banners are fully independent — one never
    mentions the other, matching the two independent systems. */
 function renderBanners(cal, goal, sugar, limit) {
@@ -272,13 +279,13 @@ function renderBanners(cal, goal, sugar, limit) {
   if (pct >= 100) calHtml = `<div class="banner over">You've reached ${Math.round(pct)}% of your ${goal} kcal goal today.</div>`;
   else if (pct >= 85) calHtml = `<div class="banner warn">Heads up — ${Math.round(pct)}% of today's ${goal} kcal goal used.</div>`;
   calEl.innerHTML = calHtml;
-
+ 
   let sugarHtml = "";
   if (sugar > limit) sugarHtml = `<div class="banner over">⚠ Added sugar is over your ${limit}g limit today — streak reset to 0.</div>`;
   else if (limit > 0 && sugar > limit * 0.7) sugarHtml = `<div class="banner warn">You're close to today's ${limit}g sugar limit (${sugar.toFixed(1)}g so far).</div>`;
   sugarEl.innerHTML = sugarHtml;
 }
-
+ 
 function renderTodayList(today) {
   const list = state.entries.filter(e => e.dateKey === today).sort((a, b) => b.ts - a.ts);
   const el = document.getElementById("todayList");
@@ -289,11 +296,11 @@ function renderTodayList(today) {
   el.innerHTML = list.map(entryHtml).join("");
   attachDeleteHandlers(el);
 }
-
+ 
 function sourceIcon(source) {
   return source === "photo" ? "📷" : source === "describe" ? "✏️" : "🧮";
 }
-
+ 
 function entryHtml(e) {
   return `<div class="entry" data-id="${e.id}">
     <div class="icon">${sourceIcon(e.source)}</div>
@@ -304,11 +311,11 @@ function entryHtml(e) {
     <button class="del" data-id="${e.id}" aria-label="Delete">✕</button>
   </div>`;
 }
-
+ 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-
+ 
 function attachDeleteHandlers(container) {
   container.querySelectorAll(".del").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -320,10 +327,10 @@ function attachDeleteHandlers(container) {
     });
   });
 }
-
+ 
 /* ---------------- History: month view ---------------- */
 let historyMonthOffset = 0; // 0 = current month, -1 = last month, etc.
-
+ 
 function monthBounds(offset) {
   const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
@@ -333,18 +340,18 @@ function monthBounds(offset) {
   const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   return { startKey, endKey, label };
 }
-
+ 
 document.getElementById("monthPrevBtn").addEventListener("click", () => { historyMonthOffset--; renderHistory(); });
 document.getElementById("monthNextBtn").addEventListener("click", () => {
   if (historyMonthOffset < 0) historyMonthOffset++;
   renderHistory();
 });
-
+ 
 function renderHistory() {
   const { startKey, endKey, label } = monthBounds(historyMonthOffset);
   document.getElementById("monthLabel").textContent = label;
   document.getElementById("monthNextBtn").disabled = historyMonthOffset >= 0;
-
+ 
   const monthEntries = state.entries.filter(e => e.dateKey >= startKey && e.dateKey <= endKey);
   const monthCal = monthEntries.reduce((s, e) => s + e.calories, 0);
   const byDate = {};
@@ -354,11 +361,11 @@ function renderHistory() {
     const sugar = byDate[k].reduce((s, e) => s + e.sugar, 0);
     return sugar <= limit;
   }).length;
-
+ 
   document.getElementById("monthCal").textContent = Math.round(monthCal);
   document.getElementById("monthSugarDays").textContent = sugarFreeDays;
   document.getElementById("monthEntries").textContent = monthEntries.length;
-
+ 
   const el = document.getElementById("historyList");
   if (!monthEntries.length) {
     el.innerHTML = `<div class="empty">No entries this month.</div>`;
@@ -376,7 +383,7 @@ function renderHistory() {
   }).join("");
   attachDeleteHandlers(el);
 }
-
+ 
 /* ---------------- notifications ---------------- */
 function maybeNotify(cal, goal) {
   if (!state.settings.notifEnabled) return;
@@ -392,7 +399,7 @@ function maybeNotify(cal, goal) {
     saveData();
   }
 }
-
+ 
 /* ---------------- daily reminder ---------------- */
 function checkReminder() {
   const s = state.settings;
@@ -415,8 +422,8 @@ function checkReminder() {
   saveData();
 }
 setInterval(checkReminder, 5 * 60 * 1000);
-
-
+ 
+ 
 const screens = ["home", "history", "add", "settings"];
 function showScreen(name) {
   screens.forEach(s => document.getElementById(`screen-${s}`)?.classList.toggle("active", s === name));
@@ -426,7 +433,7 @@ function showScreen(name) {
   if (name === "history") renderHistory();
   if (name === "home") renderHome();
 }
-
+ 
 /* ---------------- toast ---------------- */
 let toastTimer;
 function showToast(msg) {
@@ -436,21 +443,21 @@ function showToast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
 }
-
+ 
 /* ---------------- Ollama Cloud calls ---------------- */
 function getOllamaUrl() { return (state.settings.apiBase || "https://ollama.com").replace(/\/+$/, "") + "/api/chat"; }
-
+ 
 const JSON_INSTRUCTION = `You are a precise nutrition estimator trained on standard food composition databases (USDA FoodData Central style values). Think step by step internally about the specific ingredients, typical serving size, and cooking method — but output ONLY a single JSON object as your final answer. No markdown, no explanation, no code fences, no text before or after the JSON. Schema:
 {"name": string, "calories": number, "sugar_g": number, "confidence": "low"|"medium"|"high"}
-
+ 
 Rules:
 - Base calories on realistic, typical restaurant/home-cooked portion sizes for the specific food(s) named or shown — do not round to generic guesses like 100 or 200.
 - "sugar_g" is ONLY added/refined sugar (table sugar, syrup, honey used as sweetener, sweets, soda, packaged sweet sauces) — exclude naturally occurring sugars in fruit, vegetables, or plain milk/dairy.
 - If multiple food items are present, sum them into one combined entry.
 - If uncertain about exact recipe/preparation, make your best realistic estimate and set "confidence" accordingly rather than defaulting to round numbers.`;
-
+ 
 const OLLAMA_OPTIONS = { temperature: 0.15, seed: 42 };
-
+ 
 const RECIPE_JSON_INSTRUCTION = `You are a nutrition-focused recipe assistant using realistic food composition data (USDA FoodData Central style values). Respond with ONLY a single JSON object, no markdown, no explanation, no code fences. Schema:
 {
   "name": string,
@@ -468,17 +475,17 @@ Rules:
 - total_sugar_g = ONLY added/refined sugar across all ingredients (exclude natural sugars in fruit/dairy/veg).
 - 4-8 clear, concise steps.
 - Keep ingredient list to what's realistically needed — no filler items.`;
-
+ 
 function extractJson(text) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON found in model response");
   return JSON.parse(match[0]);
 }
-
+ 
 async function callOllamaChat(model, messages) {
   const key = state.settings.apiKey.trim();
   if (!key) throw new Error("Add your Ollama API key in Settings first.");
-
+ 
   let resp;
   try {
     resp = await fetch(getOllamaUrl(), {
@@ -492,7 +499,7 @@ async function callOllamaChat(model, messages) {
       "Host the app on HTTPS (e.g. GitHub Pages) to fix this. Original: " + netErr.message
     );
   }
-
+ 
   if (!resp.ok) {
     let body = "";
     try { body = await resp.text(); } catch {}
@@ -500,13 +507,13 @@ async function callOllamaChat(model, messages) {
     if (resp.status === 404) throw new Error(`Model not found (404) — check the model name in Settings.`);
     throw new Error(`Ollama API error ${resp.status}: ${body.slice(0, 200)}`);
   }
-
+ 
   const data = await resp.json();
   const content = data?.message?.content;
   if (!content) throw new Error("Empty response from model.");
   return extractJson(content);
 }
-
+ 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -515,10 +522,10 @@ function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
-
+ 
 let pendingPhotoBase64 = null;
 let pendingSource = "manual";
-
+ 
 function saveEntry({ name, calories, sugar, source }) {
   const wasOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
   state.entries.push({ id: crypto.randomUUID(), ts: Date.now(), dateKey: dateKey(), name, calories, sugar, source });
@@ -526,7 +533,7 @@ function saveEntry({ name, calories, sugar, source }) {
   const isOk = totalsForDate(dateKey()).sugar <= state.settings.sugarLimit;
   if (wasOk && !isOk) showToast("⚠ Added sugar limit exceeded — streak reset.");
 }
-
+ 
 function openConfirmModal(result, source, note) {
   pendingSource = source;
   document.getElementById("confirmAiNote").textContent = note;
@@ -535,14 +542,14 @@ function openConfirmModal(result, source, note) {
   document.getElementById("confSugar").value = (Math.round((result.sugar_g || 0) * 10) / 10) || 0;
   document.getElementById("confirmModalBg").classList.add("show");
 }
-
+ 
 function resetAddScreen() {
   document.getElementById("photoPreview").style.display = "none";
   document.getElementById("analyzePhotoBtn").style.display = "none";
   document.getElementById("describeInput").value = "";
   pendingPhotoBase64 = null;
 }
-
+ 
 /* ---------------- Settings screen ---------------- */
 function loadSettingsForm() {
   const s = state.settings;
@@ -555,13 +562,13 @@ function loadSettingsForm() {
   document.getElementById("setReminderTime").value = s.reminderTime || "20:00";
   document.getElementById("reminderStatus").textContent = s.reminderEnabled ? "Reminder is on." : "Reminder is off.";
 }
-
+ 
 /* ---------------- one-time UI wiring after login ---------------- */
 let uiInitialized = false;
 function initAppUI() {
   if (uiInitialized) { loadSettingsForm(); renderHome(); renderHistory(); return; }
   uiInitialized = true;
-
+ 
   ringCalEl = document.getElementById("ringCal");
   ringSugarEl = document.getElementById("ringSugar");
   const RAD_CAL = 95, RAD_SUGAR = 72;
@@ -569,9 +576,9 @@ function initAppUI() {
   CIRC_SUGAR = 2 * Math.PI * RAD_SUGAR;
   ringCalEl.style.strokeDasharray = `${CIRC_CAL}`;
   ringSugarEl.style.strokeDasharray = `${CIRC_SUGAR}`;
-
+ 
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showScreen(t.dataset.screen)));
-
+ 
   const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual", recipes: "modeRecipes" };
   document.getElementById("addModeSeg").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
@@ -581,10 +588,10 @@ function initAppUI() {
       document.getElementById(id).style.display = mode === btn.dataset.mode ? "block" : "none";
     });
   });
-
+ 
   document.getElementById("cameraInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
   document.getElementById("galleryInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
-
+ 
   function handlePhotoFile(file) {
     if (!file) return;
     const preview = document.getElementById("photoPreview");
@@ -593,7 +600,7 @@ function initAppUI() {
     document.getElementById("analyzePhotoBtn").style.display = "block";
     fileToBase64(file).then(b64 => { pendingPhotoBase64 = b64; });
   }
-
+ 
   document.getElementById("analyzePhotoBtn").addEventListener("click", async () => {
     if (!pendingPhotoBase64) return;
     const analyzing = document.getElementById("photoAnalyzing");
@@ -611,7 +618,7 @@ function initAppUI() {
       document.getElementById("analyzePhotoBtn").disabled = false;
     }
   });
-
+ 
   document.getElementById("analyzeDescribeBtn").addEventListener("click", async () => {
     const text = document.getElementById("describeInput").value.trim();
     if (!text) { showToast("Describe what you ate first."); return; }
@@ -630,7 +637,7 @@ function initAppUI() {
       document.getElementById("analyzeDescribeBtn").disabled = false;
     }
   });
-
+ 
   document.getElementById("manualSaveBtn").addEventListener("click", () => {
     const name = document.getElementById("manName").value.trim() || "Food entry";
     const cal = parseFloat(document.getElementById("manCal").value) || 0;
@@ -642,7 +649,7 @@ function initAppUI() {
     showToast("Entry saved.");
     showScreen("home");
   });
-
+ 
   document.getElementById("generateRecipeBtn").addEventListener("click", async () => {
     const text = document.getElementById("recipeInput").value.trim();
     if (!text) { showToast("Describe what kind of recipe you want."); return; }
@@ -663,7 +670,7 @@ function initAppUI() {
       document.getElementById("generateRecipeBtn").disabled = false;
     }
   });
-
+ 
   function renderRecipeResult(r) {
     const resultEl = document.getElementById("recipeResult");
     const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
@@ -690,7 +697,7 @@ function initAppUI() {
       showScreen("home");
     });
   }
-
+ 
   document.getElementById("confirmCancelBtn").addEventListener("click", () => {
     document.getElementById("confirmModalBg").classList.remove("show");
   });
@@ -704,7 +711,7 @@ function initAppUI() {
     showToast("Entry saved.");
     showScreen("home");
   });
-
+ 
   function bindSettingsAutosave() {
     const map = {
       setApiKey: "apiKey", setApiBase: "apiBase", setVisionModel: "visionModel", setTextModel: "textModel",
@@ -721,7 +728,7 @@ function initAppUI() {
     });
   }
   bindSettingsAutosave();
-
+ 
   document.getElementById("testApiBtn").addEventListener("click", async () => {
     const key = document.getElementById("setApiKey").value.trim();
     if (!key) { showToast("Enter an API key first."); return; }
@@ -741,7 +748,7 @@ function initAppUI() {
       console.error("Test connection error:", err);
     }
   });
-
+ 
   document.getElementById("enableNotifBtn").addEventListener("click", async () => {
     if (!("Notification" in window)) { showToast("Notifications not supported here."); return; }
     const perm = await Notification.requestPermission();
@@ -749,7 +756,7 @@ function initAppUI() {
     saveData();
     showToast(perm === "granted" ? "Calorie alerts enabled." : "Permission not granted.");
   });
-
+ 
   document.getElementById("resetStreakBtn").addEventListener("click", () => {
     const current = computeStreak();
     if (!confirm(`Reset your current ${current}-day streak to 0? Your logged entries and history will NOT be deleted.`)) return;
@@ -758,7 +765,7 @@ function initAppUI() {
     renderHome();
     showToast("Streak reset.");
   });
-
+ 
   document.getElementById("setReminderTime").addEventListener("change", (e) => {
     state.settings.reminderTime = e.target.value;
     saveData();
@@ -771,7 +778,7 @@ function initAppUI() {
     document.getElementById("reminderStatus").textContent = state.settings.reminderEnabled ? "Reminder is on." : "Permission not granted.";
     showToast(state.settings.reminderEnabled ? "Reminder enabled." : "Permission not granted.");
   });
-
+ 
   document.getElementById("exportBtn").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -810,16 +817,16 @@ function initAppUI() {
     renderHome(); renderHistory();
     showToast("All data erased.");
   });
-
+ 
   loadSettingsForm();
   renderHome();
   checkReminder();
   maybeShowApiWizard();
-
+ 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
-
+ 
   function maybeShowApiWizard() {
     if (state.settings.apiKey) return;
     document.getElementById("wizardStep1").style.display = "block";
@@ -859,4 +866,6 @@ function initAppUI() {
       statusEl.textContent = "Couldn't connect — check your key and try again.";
     }
   });
+}
+ 
 }
