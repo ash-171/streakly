@@ -18,7 +18,7 @@ const DEFAULTS = {
   },
   entries: [] // {id, ts, dateKey, name, calories, sugar, source}
 };
-
+ 
 let state = structuredClone(DEFAULTS);
 let uid = null;
 let saveTimer = null;
@@ -582,14 +582,40 @@ function initAppUI() {
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showScreen(t.dataset.screen)));
  
   const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual", recipes: "modeRecipes" };
+  const modeOrder = ["photo", "describe", "manual", "recipes"];
+ 
+  function setAddMode(mode) {
+    const btn = document.querySelector(`#addModeSeg button[data-mode="${mode}"]`);
+    if (!btn) return;
+    document.querySelectorAll("#addModeSeg button").forEach(b => b.classList.toggle("active", b === btn));
+    Object.entries(modeCards).forEach(([m, id]) => {
+      document.getElementById(id).style.display = m === mode ? "block" : "none";
+    });
+  }
+ 
   document.getElementById("addModeSeg").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
-    document.querySelectorAll("#addModeSeg button").forEach(b => b.classList.toggle("active", b === btn));
-    Object.entries(modeCards).forEach(([mode, id]) => {
-      document.getElementById(id).style.display = mode === btn.dataset.mode ? "block" : "none";
-    });
+    setAddMode(btn.dataset.mode);
   });
+ 
+  const addScreen = document.getElementById("screen-add");
+  let touchStartX = null, touchStartY = null;
+  addScreen.addEventListener("touchstart", (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  addScreen.addEventListener("touchend", (e) => {
+    if (touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    touchStartX = null;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return; // ignore short/vertical swipes
+    const current = document.querySelector("#addModeSeg button.active")?.dataset.mode || "photo";
+    const idx = modeOrder.indexOf(current);
+    if (dx < 0 && idx < modeOrder.length - 1) setAddMode(modeOrder[idx + 1]); // swipe left -> next
+    else if (dx > 0 && idx > 0) setAddMode(modeOrder[idx - 1]); // swipe right -> prev
+  }, { passive: true });
  
   document.getElementById("cameraInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
   document.getElementById("galleryInput").addEventListener("change", e => handlePhotoFile(e.target.files[0]));
@@ -687,7 +713,12 @@ function initAppUI() {
         </ul>
         <ol class="recipe-steps">${steps.map(s => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
         <button class="btn secondary" id="logRecipeBtn">Log this as a meal</button>
+        <button class="btn secondary" id="discardRecipeBtn" style="margin-top:10px;">Not interested — discard</button>
       </div>`;
+    document.getElementById("discardRecipeBtn").addEventListener("click", () => {
+      resultEl.innerHTML = "";
+      document.getElementById("recipeInput").value = "";
+    });
     document.getElementById("logRecipeBtn").addEventListener("click", () => {
       saveEntry({
         name: r.name || "Recipe",
@@ -702,6 +733,7 @@ function initAppUI() {
  
   document.getElementById("confirmCancelBtn").addEventListener("click", () => {
     document.getElementById("confirmModalBg").classList.remove("show");
+    resetAddScreen();
   });
   document.getElementById("confirmSaveBtn").addEventListener("click", () => {
     const name = document.getElementById("confName").value.trim() || "Food entry";
@@ -869,4 +901,5 @@ function initAppUI() {
     }
   });
 }
+ 
  
