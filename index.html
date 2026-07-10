@@ -278,6 +278,32 @@
     </div>
   </div>
 
+  <!-- ================= FIRST-RUN API KEY WIZARD ================= -->
+  <div class="modal-bg" id="wizardModalBg">
+    <div class="modal">
+      <div id="wizardStep1">
+        <h3>One quick setup step</h3>
+        <p class="hint" style="margin-bottom:16px;">Streakly uses Ollama Cloud (free) to read your food photos and descriptions. You'll need a free API key — takes about 30 seconds.</p>
+        <ol style="font-size:13px;color:var(--text-muted);line-height:1.8;padding-left:18px;margin-bottom:16px;">
+          <li>Tap the link below and sign in (or create a free Ollama account).</li>
+          <li>Click "New API key", give it any name, and copy it.</li>
+          <li>Come back here and paste it in.</li>
+        </ol>
+        <a href="https://ollama.com/settings/keys" target="_blank" rel="noopener" class="btn secondary" style="text-decoration:none;display:block;text-align:center;">Get my free API key ↗</a>
+        <button class="btn" id="wizardNextBtn" style="margin-top:12px;">I have my key</button>
+        <button class="btn secondary" id="wizardSkipBtn" style="margin-top:10px;">Skip for now</button>
+      </div>
+      <div id="wizardStep2" style="display:none;">
+        <h3>Paste your API key</h3>
+        <label>API key</label>
+        <input type="password" id="wizardApiKey" placeholder="ollama-xxxxxxxxxxxx">
+        <button class="btn" id="wizardTestSaveBtn" style="margin-top:14px;">Test & Save</button>
+        <button class="btn secondary" id="wizardBackBtn" style="margin-top:10px;">Back</button>
+        <div class="hint" id="wizardStatus" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 </div>
 
