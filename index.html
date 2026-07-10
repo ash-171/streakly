@@ -22,10 +22,10 @@
       <div class="login-card">
         <h2 class="panel-title">Sign in</h2>
         <label>Email</label>
-        <input type="email" id="signinEmail" placeholder="you@example.com">
+        <input type="email" id="signinEmail" name="streakly-signin-email" autocomplete="off" placeholder="you@example.com">
         <label>Password</label>
         <div class="pw-wrap">
-          <input type="password" id="signinPassword" placeholder="••••••••">
+          <input type="password" id="signinPassword" name="streakly-signin-pw" autocomplete="off" placeholder="••••••••">
           <button type="button" id="toggleSigninPw" class="pw-toggle">👁</button>
         </div>
         <button class="btn" id="loginBtn" style="margin-top:14px;">Sign in</button>
@@ -35,12 +35,12 @@
       <div class="login-card">
         <h2 class="panel-title">Create account</h2>
         <label>Name</label>
-        <input type="text" id="loginName" placeholder="Your name">
+        <input type="text" id="loginName" name="streakly-signup-name" autocomplete="off" placeholder="Your name">
         <label>Email</label>
-        <input type="email" id="signupEmail" placeholder="you@example.com">
+        <input type="email" id="signupEmail" name="streakly-signup-email" autocomplete="off" placeholder="you@example.com">
         <label>Password</label>
         <div class="pw-wrap">
-          <input type="password" id="signupPassword" placeholder="••••••••">
+          <input type="password" id="signupPassword" name="streakly-signup-pw" autocomplete="new-password" placeholder="••••••••">
           <button type="button" id="toggleSignupPw" class="pw-toggle">👁</button>
         </div>
         <div class="hint">Use 8+ characters with a mix of letters, numbers & symbols.</div>
@@ -312,6 +312,5 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="app.js"></script>
-  
 </body>
 </html>
