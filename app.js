@@ -19,6 +19,7 @@ const DEFAULTS = {
   entries: [] // {id, ts, dateKey, name, calories, sugar, source}
 };
  
+
 let state = structuredClone(DEFAULTS);
 let uid = null;
 let saveTimer = null;
@@ -162,6 +163,7 @@ document.getElementById("deleteAccountBtn").addEventListener("click", async () =
 });
  
 auth.onAuthStateChanged(async (user) => {
+  document.getElementById("loadingScreen").style.display = "none";
   if (user) {
     uid = user.uid;
     loginScreen.style.display = "none";
@@ -901,5 +903,4 @@ function initAppUI() {
     }
   });
 }
- 
  
