@@ -19,7 +19,7 @@ const DEFAULTS = {
   entries: [] // {id, ts, dateKey, name, calories, sugar, source}
 };
  
-
+ 
 let state = structuredClone(DEFAULTS);
 let uid = null;
 let saveTimer = null;
@@ -162,8 +162,21 @@ document.getElementById("deleteAccountBtn").addEventListener("click", async () =
   }
 });
  
+function hideLoadingScreen() {
+  const el = document.getElementById("loadingScreen");
+  if (el) el.style.display = "none";
+}
+// Safety net: if Firebase auth never resolves (offline, slow network,
+// or a stale cached script), don't leave the user stuck on the spinner —
+// fall back to showing the login screen after 6 seconds.
+const authTimeoutId = setTimeout(() => {
+  hideLoadingScreen();
+  if (!uid) loginScreen.style.display = "flex";
+}, 6000);
+ 
 auth.onAuthStateChanged(async (user) => {
-  document.getElementById("loadingScreen").style.display = "none";
+  clearTimeout(authTimeoutId);
+  hideLoadingScreen();
   if (user) {
     uid = user.uid;
     loginScreen.style.display = "none";
@@ -903,4 +916,5 @@ function initAppUI() {
     }
   });
 }
+ 
  
