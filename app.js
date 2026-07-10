@@ -85,8 +85,12 @@ async function loadFromCloud() {
 const loginScreen = document.getElementById("loginScreen");
 const appRoot = document.getElementById("app");
 
-document.getElementById("togglePw").addEventListener("click", () => {
-  const pw = document.getElementById("loginPassword");
+document.getElementById("toggleSigninPw").addEventListener("click", () => {
+  const pw = document.getElementById("signinPassword");
+  pw.type = pw.type === "password" ? "text" : "password";
+});
+document.getElementById("toggleSignupPw").addEventListener("click", () => {
+  const pw = document.getElementById("signupPassword");
   pw.type = pw.type === "password" ? "text" : "password";
 });
 
@@ -94,25 +98,49 @@ function isStrongPassword(pw) {
   return pw.length >= 8 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);
 }
 
+["signinEmail", "signinPassword"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("loginBtn").click();
+  });
+});
+["loginName", "signupEmail", "signupPassword"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("signupBtn").click();
+  });
+});
+
 document.getElementById("loginBtn").addEventListener("click", () => {
-  const email = document.getElementById("loginEmail").value.trim();
-  const pw = document.getElementById("loginPassword").value;
-  document.getElementById("loginError").textContent = "";
+  const email = document.getElementById("signinEmail").value.trim();
+  const pw = document.getElementById("signinPassword").value;
+  document.getElementById("signinError").innerHTML = "";
   auth.signInWithEmailAndPassword(email, pw).catch((e) => {
-    document.getElementById("loginError").textContent = e.message;
+    const errEl = document.getElementById("signinError");
+    if (e.code === "auth/invalid-credential" || e.code === "auth/user-not-found" || e.code === "auth/wrong-password") {
+      errEl.innerHTML = `<div class="banner warn">⚠ No account found with that email/password. Please create an account on the right →</div>`;
+      document.getElementById("signinPassword").value = "";
+    } else {
+      errEl.textContent = e.message;
+    }
   });
 });
 document.getElementById("signupBtn").addEventListener("click", () => {
-  const email = document.getElementById("loginEmail").value.trim();
-  const pw = document.getElementById("loginPassword").value;
-  document.getElementById("loginError").textContent = "";
-  if (!isStrongPassword(pw)) {
-    document.getElementById("loginError").textContent = "Password must be 8+ characters with letters and numbers.";
+  const name = document.getElementById("loginName").value.trim();
+  const email = document.getElementById("signupEmail").value.trim();
+  const pw = document.getElementById("signupPassword").value;
+  document.getElementById("signupError").textContent = "";
+  if (!name) {
+    document.getElementById("signupError").textContent = "Please enter your name.";
     return;
   }
-  auth.createUserWithEmailAndPassword(email, pw).catch((e) => {
-    document.getElementById("loginError").textContent = e.message;
-  });
+  if (!isStrongPassword(pw)) {
+    document.getElementById("signupError").textContent = "Password must be 8+ characters with letters and numbers.";
+    return;
+  }
+  auth.createUserWithEmailAndPassword(email, pw)
+    .then((cred) => cred.user.updateProfile({ displayName: name }))
+    .catch((e) => {
+      document.getElementById("signupError").textContent = e.message;
+    });
 });
 document.getElementById("logoutBtn").addEventListener("click", () => auth.signOut());
 document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
@@ -136,7 +164,7 @@ auth.onAuthStateChanged(async (user) => {
     uid = user.uid;
     loginScreen.style.display = "none";
     appRoot.style.display = "flex";
-    document.getElementById("accountEmail").textContent = user.email || "Signed in";
+    document.getElementById("accountEmail").textContent = user.displayName ? `${user.displayName} · ${user.email}` : (user.email || "Signed in");
     await loadFromCloud();
     initAppUI();
   } else {
@@ -412,9 +440,34 @@ function showToast(msg) {
 /* ---------------- Ollama Cloud calls ---------------- */
 function getOllamaUrl() { return (state.settings.apiBase || "https://ollama.com").replace(/\/+$/, "") + "/api/chat"; }
 
-const JSON_INSTRUCTION = `You are a nutrition estimator. Respond with ONLY a single JSON object, no markdown, no explanation, no code fences. Schema:
+const JSON_INSTRUCTION = `You are a precise nutrition estimator trained on standard food composition databases (USDA FoodData Central style values). Think step by step internally about the specific ingredients, typical serving size, and cooking method — but output ONLY a single JSON object as your final answer. No markdown, no explanation, no code fences, no text before or after the JSON. Schema:
 {"name": string, "calories": number, "sugar_g": number, "confidence": "low"|"medium"|"high"}
-"sugar_g" must be ONLY added/refined sugar grams (e.g. table sugar, syrups, sweets, soda, packaged sweet sauces) — exclude naturally occurring sugars in fruit, vegetables, or plain milk/dairy. Estimate for the single portion described or shown. If multiple food items are present, sum them into one combined entry. Use your best nutritional estimate even if uncertain.`;
+
+Rules:
+- Base calories on realistic, typical restaurant/home-cooked portion sizes for the specific food(s) named or shown — do not round to generic guesses like 100 or 200.
+- "sugar_g" is ONLY added/refined sugar (table sugar, syrup, honey used as sweetener, sweets, soda, packaged sweet sauces) — exclude naturally occurring sugars in fruit, vegetables, or plain milk/dairy.
+- If multiple food items are present, sum them into one combined entry.
+- If uncertain about exact recipe/preparation, make your best realistic estimate and set "confidence" accordingly rather than defaulting to round numbers.`;
+
+const OLLAMA_OPTIONS = { temperature: 0.15, seed: 42 };
+
+const RECIPE_JSON_INSTRUCTION = `You are a nutrition-focused recipe assistant using realistic food composition data (USDA FoodData Central style values). Respond with ONLY a single JSON object, no markdown, no explanation, no code fences. Schema:
+{
+  "name": string,
+  "description": string,
+  "servings": number,
+  "ingredients": [ {"item": string, "amount": string, "calories": number} ],
+  "steps": [string],
+  "total_calories": number,
+  "total_sugar_g": number
+}
+Rules:
+- Recipe must be genuinely healthy: whole-food ingredients, minimal added sugar/refined carbs, balanced macros.
+- Give per-ingredient calories for the full recipe (not per serving), based on realistic quantities for the stated amount.
+- total_calories = sum of ingredient calories, for the whole recipe (all servings combined).
+- total_sugar_g = ONLY added/refined sugar across all ingredients (exclude natural sugars in fruit/dairy/veg).
+- 4-8 clear, concise steps.
+- Keep ingredient list to what's realistically needed — no filler items.`;
 
 function extractJson(text) {
   const match = text.match(/\{[\s\S]*\}/);
@@ -431,7 +484,7 @@ async function callOllamaChat(model, messages) {
     resp = await fetch(getOllamaUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({ model, messages, stream: false })
+      body: JSON.stringify({ model, messages, stream: false, options: OLLAMA_OPTIONS })
     });
   } catch (netErr) {
     throw new Error(
@@ -519,7 +572,7 @@ function initAppUI() {
 
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showScreen(t.dataset.screen)));
 
-  const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual" };
+  const modeCards = { photo: "modePhoto", describe: "modeDescribe", manual: "modeManual", recipes: "modeRecipes" };
   document.getElementById("addModeSeg").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -589,6 +642,54 @@ function initAppUI() {
     showToast("Entry saved.");
     showScreen("home");
   });
+
+  document.getElementById("generateRecipeBtn").addEventListener("click", async () => {
+    const text = document.getElementById("recipeInput").value.trim();
+    if (!text) { showToast("Describe what kind of recipe you want."); return; }
+    const analyzing = document.getElementById("recipeAnalyzing");
+    const resultEl = document.getElementById("recipeResult");
+    analyzing.style.display = "flex";
+    resultEl.innerHTML = "";
+    document.getElementById("generateRecipeBtn").disabled = true;
+    try {
+      const recipe = await callOllamaChat(state.settings.textModel, [
+        { role: "user", content: `${RECIPE_JSON_INSTRUCTION}\nRequest: "${text}"` }
+      ]);
+      renderRecipeResult(recipe);
+    } catch (err) {
+      showToast(err.message || "Couldn't generate a recipe.");
+    } finally {
+      analyzing.style.display = "none";
+      document.getElementById("generateRecipeBtn").disabled = false;
+    }
+  });
+
+  function renderRecipeResult(r) {
+    const resultEl = document.getElementById("recipeResult");
+    const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
+    const steps = Array.isArray(r.steps) ? r.steps : [];
+    resultEl.innerHTML = `
+      <div class="recipe-card">
+        <h3>${escapeHtml(r.name || "Recipe")}</h3>
+        <div class="hint">${escapeHtml(r.description || "")}</div>
+        <div class="recipe-total">${Math.round(r.total_calories || 0)} kcal total · ${(r.total_sugar_g || 0).toFixed(1)}g added sugar · serves ${r.servings || 1}</div>
+        <ul class="recipe-ingredients">
+          ${ingredients.map(i => `<li><span>${escapeHtml(i.item || "")} (${escapeHtml(i.amount || "")})</span><span>${Math.round(i.calories || 0)} kcal</span></li>`).join("")}
+        </ul>
+        <ol class="recipe-steps">${steps.map(s => `<li>${escapeHtml(s)}</li>`).join("")}</ol>
+        <button class="btn secondary" id="logRecipeBtn">Log this as a meal</button>
+      </div>`;
+    document.getElementById("logRecipeBtn").addEventListener("click", () => {
+      saveEntry({
+        name: r.name || "Recipe",
+        calories: Math.round(r.total_calories || 0),
+        sugar: Math.round((r.total_sugar_g || 0) * 10) / 10,
+        source: "manual"
+      });
+      showToast("Logged.");
+      showScreen("home");
+    });
+  }
 
   document.getElementById("confirmCancelBtn").addEventListener("click", () => {
     document.getElementById("confirmModalBg").classList.remove("show");
