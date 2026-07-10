@@ -142,7 +142,9 @@ document.getElementById("signupBtn").addEventListener("click", () => {
       document.getElementById("signupError").textContent = e.message;
     });
 });
-document.getElementById("logoutBtn").addEventListener("click", () => auth.signOut());
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  auth.signOut().then(() => location.reload());
+});
 document.getElementById("deleteAccountBtn").addEventListener("click", async () => {
   if (!confirm("Permanently delete your account and ALL data? This can't be undone.")) return;
   try {
@@ -868,4 +870,3 @@ function initAppUI() {
   });
 }
  
-}
