@@ -33,17 +33,19 @@ self.addEventListener("fetch", (e) => {
   if (url.hostname.includes("firebaseio.com")) return;
   if (url.hostname.includes("firebaseapp.com")) return;
   if (e.request.method !== "GET") return;
+  if (url.origin !== location.origin) return; // only manage our own files
 
+  // Network-first: always try to fetch the latest version. Only fall
+  // back to the cached copy if the network is unavailable (offline).
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(e.request).then((resp) => {
-        if (resp.ok && url.origin === location.origin) {
+    fetch(e.request)
+      .then((resp) => {
+        if (resp.ok) {
           const clone = resp.clone();
           caches.open(CACHE).then((cache) => cache.put(e.request, clone));
         }
         return resp;
-      }).catch(() => cached);
-    })
+      })
+      .catch(() => caches.match(e.request))
   );
 });
