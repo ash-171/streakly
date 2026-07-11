@@ -162,16 +162,22 @@
 
   <!-- ================= HISTORY ================= -->
   <section class="screen" id="screen-history">
-    <div class="month-nav">
-      <button id="monthPrevBtn" aria-label="Previous month">‹</button>
-      <div id="monthLabel">—</div>
-      <button id="monthNextBtn" aria-label="Next month">›</button>
+    <div class="seg" id="historyViewSeg">
+      <button class="active" data-view="day">Day</button>
+      <button data-view="week">Week</button>
+      <button data-view="month">Month</button>
     </div>
+    <div class="month-nav">
+      <button id="monthPrevBtn" aria-label="Previous">‹</button>
+      <div id="monthLabel">—</div>
+      <button id="monthNextBtn" aria-label="Next">›</button>
+    </div>
+    <div id="calendarGrid"></div>
     <div class="card" id="monthSummaryCard">
-      <h2>Month summary</h2>
+      <h2>Summary</h2>
       <div class="stat-row">
         <div class="stat"><div class="v" id="monthCal">0</div><div class="k">total kcal</div></div>
-        <div class="stat"><div class="v" id="monthSugarDays">0</div><div class="k">sugar-free days</div></div>
+        <div class="stat"><div class="v" id="monthSugarDays">0</div><div class="k">sugar-ok days</div></div>
         <div class="stat"><div class="v" id="monthEntries">0</div><div class="k">entries</div></div>
       </div>
     </div>
