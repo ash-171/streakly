@@ -272,8 +272,8 @@ function renderHome() {
   document.getElementById("statSugar").textContent = `${sugar.toFixed(1)}g`;
   document.getElementById("statEntries").textContent = count;
 
-  const calFrac = Math.min(cal / goal, 1);
-  ringCalEl.style.strokeDashoffset = `${CIRC_CAL * (1 - calFrac)}`;
+  const calFraction = Math.min(cal / goal, 1);
+  ringCalEl.style.strokeDashoffset = `${CIRC_CAL * (1 - calFraction)}`;
   const sugarFrac = limit > 0 ? Math.min(sugar / limit, 1) : (sugar > 0 ? 1 : 0);
   ringSugarEl.style.strokeDashoffset = `${CIRC_SUGAR * (1 - sugarFrac)}`;
 
@@ -347,8 +347,10 @@ function attachDeleteHandlers(container) {
   });
 }
 
-/* ---------------- History: month view ---------------- */
-let historyMonthOffset = 0; // 0 = current month, -1 = last month, etc.
+/* ---------------- History: Day / Week / Month ---------------- */
+let historyViewMode = "day";      // "day" | "week" | "month"
+let historyMonthOffset = 0;       // 0 = current month, -1 = last month, etc. (month view)
+let selectedDayKey = dateKey();   // anchor date for day/week views
 
 function monthBounds(offset) {
   const now = new Date();
@@ -360,38 +362,97 @@ function monthBounds(offset) {
   return { startKey, endKey, label };
 }
 
-document.getElementById("monthPrevBtn").addEventListener("click", () => { historyMonthOffset--; renderHistory(); });
-document.getElementById("monthNextBtn").addEventListener("click", () => {
-  if (historyMonthOffset < 0) historyMonthOffset++;
+function weekDays(anchorKey) {
+  const [yy, mm, dd] = anchorKey.split("-").map(Number);
+  const d = new Date(yy, mm - 1, dd);
+  d.setDate(d.getDate() - d.getDay()); // back up to Sunday
+  const start = dateKey(d);
+  return Array.from({ length: 7 }, (_, i) => shiftKey(start, i));
+}
+
+/* Circle SIZE = calorie goal progress (bigger = closer to/over goal).
+   Circle COLOR = sugar streak status vs limit (green/amber/red). */
+function calorieFraction(cal, goal) {
+  return goal > 0 ? Math.min(cal / goal, 1) : 0;
+}
+function sugarColorFor(sugar, limit) {
+  if (limit > 0 && sugar > limit) return "var(--sugar-over)";
+  if (limit > 0 && sugar > limit * 0.7) return "var(--sugar-warn)";
+  return "var(--sugar-ok)";
+}
+
+function dayCircleHtml(key, { big = false, disabled = false } = {}) {
+  const { cal, sugar, count } = totalsForDate(key);
+  const goal = state.settings.calorieGoal;
+  const limit = state.settings.sugarLimit;
+  const base = big ? 34 : 28;
+  const span = big ? 26 : 18;
+  const size = count ? Math.round(base + calorieFraction(cal, goal) * span) : base - 6;
+  const color = count ? sugarColorFor(sugar, limit) : "var(--surface-2)";
+  const dd = parseInt(key.split("-")[2], 10);
+  const isToday = key === dateKey() ? "today" : "";
+  const isSelected = key === selectedDayKey ? "selected" : "";
+  const future = key > dateKey();
+  return `<button class="day-circle ${isToday} ${isSelected}" data-key="${key}"
+      style="width:${size}px;height:${size}px;background:${count ? color : "transparent"};border-color:${color}"
+      ${future || disabled ? "disabled" : ""}>${dd}</button>`;
+}
+
+function bindCalendarClicks() {
+  document.getElementById("calendarGrid").querySelectorAll(".day-circle:not(:disabled)").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedDayKey = btn.dataset.key;
+      setHistoryView("day");
+    });
+  });
+}
+
+function setHistoryView(mode) {
+  historyViewMode = mode;
+  document.querySelectorAll("#historyViewSeg button").forEach(b => b.classList.toggle("active", b.dataset.view === mode));
   renderHistory();
+}
+
+document.getElementById("historyViewSeg").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  setHistoryView(btn.dataset.view);
 });
 
-function renderHistory() {
-  const { startKey, endKey, label } = monthBounds(historyMonthOffset);
-  document.getElementById("monthLabel").textContent = label;
-  document.getElementById("monthNextBtn").disabled = historyMonthOffset >= 0;
+document.getElementById("monthPrevBtn").addEventListener("click", () => navHistory(-1));
+document.getElementById("monthNextBtn").addEventListener("click", () => navHistory(1));
 
-  const monthEntries = state.entries.filter(e => e.dateKey >= startKey && e.dateKey <= endKey);
-  const monthCal = monthEntries.reduce((s, e) => s + e.calories, 0);
-  const byDate = {};
-  for (const e of monthEntries) (byDate[e.dateKey] ||= []).push(e);
+function navHistory(dir) {
+  if (historyViewMode === "month") historyMonthOffset += dir;
+  else if (historyViewMode === "week") selectedDayKey = shiftKey(selectedDayKey, dir * 7);
+  else selectedDayKey = shiftKey(selectedDayKey, dir);
+  renderHistory();
+}
+
+function setSummary(entries) {
   const limit = state.settings.sugarLimit;
-  const sugarFreeDays = Object.keys(byDate).filter(k => {
-    const sugar = byDate[k].reduce((s, e) => s + e.sugar, 0);
-    return sugar <= limit;
-  }).length;
+  const byDate = {};
+  for (const e of entries) (byDate[e.dateKey] ||= []).push(e);
+  const cal = entries.reduce((s, e) => s + e.calories, 0);
+  const okDays = Object.keys(byDate).filter(k => byDate[k].reduce((s, e) => s + e.sugar, 0) <= limit).length;
+  document.getElementById("monthCal").textContent = Math.round(cal);
+  document.getElementById("monthSugarDays").textContent = okDays;
+  document.getElementById("monthEntries").textContent = entries.length;
+}
 
-  document.getElementById("monthCal").textContent = Math.round(monthCal);
-  document.getElementById("monthSugarDays").textContent = sugarFreeDays;
-  document.getElementById("monthEntries").textContent = monthEntries.length;
-
+function renderEntryListForKeys(keys) {
   const el = document.getElementById("historyList");
-  if (!monthEntries.length) {
-    el.innerHTML = `<div class="empty">No entries this month.</div>`;
+  const keySet = new Set(keys);
+  const entries = state.entries.filter(e => keySet.has(e.dateKey));
+  setSummary(entries);
+  if (!entries.length) {
+    el.innerHTML = `<div class="empty">No entries.</div>`;
     return;
   }
-  const keys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
-  el.innerHTML = keys.map(key => {
+  const byDate = {};
+  for (const e of entries) (byDate[e.dateKey] ||= []).push(e);
+  const sortedKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  el.innerHTML = sortedKeys.map(key => {
     const items = byDate[key].sort((a, b) => b.ts - a.ts);
     const cal = items.reduce((s, e) => s + e.calories, 0);
     const sugar = items.reduce((s, e) => s + e.sugar, 0);
@@ -401,6 +462,57 @@ function renderHistory() {
     </div>`;
   }).join("");
   attachDeleteHandlers(el);
+}
+
+const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function renderHistory() {
+  const nextBtn = document.getElementById("monthNextBtn");
+  const grid = document.getElementById("calendarGrid");
+
+  if (historyViewMode === "month") {
+    const { startKey, endKey, label } = monthBounds(historyMonthOffset);
+    document.getElementById("monthLabel").textContent = label;
+    nextBtn.disabled = historyMonthOffset >= 0;
+
+    const [yy, mm] = startKey.split("-").map(Number);
+    const firstDow = new Date(yy, mm - 1, 1).getDay();
+    const daysInMonth = new Date(yy, mm, 0).getDate();
+    let cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push('<div class="day-cell"></div>');
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      cells.push(`<div class="day-cell">${dayCircleHtml(key)}</div>`);
+    }
+    grid.innerHTML = `
+      <div class="cal-weekdays">${WEEKDAY_LABELS.map(d => `<span>${d}</span>`).join("")}</div>
+      <div class="cal-grid">${cells.join("")}</div>`;
+    bindCalendarClicks();
+
+    const monthKeys = state.entries
+      .filter(e => e.dateKey >= startKey && e.dateKey <= endKey)
+      .map(e => e.dateKey);
+    renderEntryListForKeys(monthKeys);
+
+  } else if (historyViewMode === "week") {
+    const days = weekDays(selectedDayKey);
+    document.getElementById("monthLabel").textContent = `${prettyDate(days[0])} – ${prettyDate(days[6])}`;
+    nextBtn.disabled = shiftKey(selectedDayKey, 7) > dateKey();
+
+    grid.innerHTML = `
+      <div class="cal-weekdays">${WEEKDAY_LABELS.map(d => `<span>${d}</span>`).join("")}</div>
+      <div class="cal-grid">${days.map(k => `<div class="day-cell">${dayCircleHtml(k, { big: true })}</div>`).join("")}</div>`;
+    bindCalendarClicks();
+    renderEntryListForKeys(days);
+
+  } else { // day
+    document.getElementById("monthLabel").textContent = prettyDate(selectedDayKey);
+    nextBtn.disabled = selectedDayKey >= dateKey();
+
+    grid.innerHTML = `<div class="cal-grid single">${dayCircleHtml(selectedDayKey, { big: true, disabled: true })}</div>`;
+    bindCalendarClicks();
+    renderEntryListForKeys([selectedDayKey]);
+  }
 }
 
 /* ---------------- notification helper ----------------
