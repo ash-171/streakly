@@ -244,11 +244,25 @@ textarea { resize: vertical; min-height: 70px; }
 .day-circle.today { box-shadow: 0 0 0 2px var(--text) inset; font-weight: 700; }
 .day-circle.selected { box-shadow: 0 0 0 2px var(--cal); }
 
-.day-group { margin-bottom: 18px; }
+.day-group { margin-bottom: 12px; }
 .day-head {
-  display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 4px 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; font-size: 12px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: var(--font); cursor: pointer;
 }
+.day-head .day-count { text-transform: none; letter-spacing: 0; opacity: 0.7; }
+.day-head .chev {
+  display: inline-block; margin-right: 6px; font-size: 13px;
+  transition: transform 0.2s ease; transform: rotate(90deg);
+}
+.day-head .chev.open { transform: rotate(-90deg); }
+.day-entries {
+  max-height: 0; overflow: hidden; padding: 0 2px;
+  transition: max-height 0.25s ease;
+}
+.day-entries.open { max-height: 2000px; padding-top: 8px; }
 .entry {
   display: flex; align-items: center; gap: 12px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
