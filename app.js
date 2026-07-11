@@ -440,6 +440,9 @@ function setSummary(entries) {
   document.getElementById("monthEntries").textContent = entries.length;
 }
 
+// Tracks which day-groups are expanded in the history list, keyed by dateKey.
+const expandedDayGroups = new Set();
+
 function renderEntryListForKeys(keys) {
   const el = document.getElementById("historyList");
   const keySet = new Set(keys);
@@ -452,16 +455,37 @@ function renderEntryListForKeys(keys) {
   const byDate = {};
   for (const e of entries) (byDate[e.dateKey] ||= []).push(e);
   const sortedKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
+  // Single-day views (Day tab) start expanded automatically; otherwise default collapsed.
+  if (sortedKeys.length === 1 && !expandedDayGroups.has(sortedKeys[0]) && !expandedDayGroups.has(`collapsed:${sortedKeys[0]}`)) {
+    expandedDayGroups.add(sortedKeys[0]);
+  }
   el.innerHTML = sortedKeys.map(key => {
     const items = byDate[key].sort((a, b) => b.ts - a.ts);
     const cal = items.reduce((s, e) => s + e.calories, 0);
     const sugar = items.reduce((s, e) => s + e.sugar, 0);
+    const isOpen = expandedDayGroups.has(key);
     return `<div class="day-group">
-      <div class="day-head"><span>${prettyDate(key)}</span><span>${Math.round(cal)} kcal · ${sugar.toFixed(1)}g sugar</span></div>
-      ${items.map(entryHtml).join("")}
+      <button class="day-head" data-key="${key}">
+        <span><span class="chev ${isOpen ? "open" : ""}">›</span>${prettyDate(key)} <span class="day-count">(${items.length})</span></span>
+        <span>${Math.round(cal)} kcal · ${sugar.toFixed(1)}g sugar</span>
+      </button>
+      <div class="day-entries ${isOpen ? "open" : ""}">${items.map(entryHtml).join("")}</div>
     </div>`;
   }).join("");
   attachDeleteHandlers(el);
+  el.querySelectorAll(".day-head").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      if (expandedDayGroups.has(key)) {
+        expandedDayGroups.delete(key);
+        expandedDayGroups.add(`collapsed:${key}`);
+      } else {
+        expandedDayGroups.add(key);
+        expandedDayGroups.delete(`collapsed:${key}`);
+      }
+      renderEntryListForKeys(keys);
+    });
+  });
 }
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
