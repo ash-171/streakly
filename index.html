@@ -192,8 +192,8 @@
       <label>API key</label>
       <input type="password" id="setApiKey" placeholder="ollama-xxxxxxxxxxxx">
       <div class="hint">
-        1. Go to <a href="https://ollama.com/settings/keys" target="_blank" rel="noopener">ollama.com/settings/keys</a> and sign in (or create a free account).<br>
-        2. Click "New API key", give it a name, and copy it.<br>
+        1. Go to <a href="https://ollama.com/settings/keys" target="_blank" rel="noopener">ollama.com/settings/keys</a>. If you don't have an account, it'll ask you to sign up first — after that, tap the link again to actually reach the keys page.<br>
+        2. Click "New API key", give it a name (e.g. "Streakly"), and copy it.<br>
         3. Paste it here — it's stored only on this device, never sent anywhere except Ollama.<br>
         <em>Note: the API Base URL below is just a CORS proxy — your key itself always comes from ollama.com, not from the proxy URL.</em>
       </div>
@@ -214,6 +214,7 @@
       <input type="number" id="setCalGoal" inputmode="numeric">
       <div class="hint">No single number fits everyone — a common range is ~1,800–2,200 kcal for women and ~2,200–2,800 for men, depending on age, weight and activity. Adjust to what your doctor or dietitian recommends. Tracked independently from your sugar streak.</div>
       <button class="btn secondary" id="enableNotifBtn" style="margin-top:14px;">Enable calorie alerts</button>
+      <div class="hint" id="notifStatus"></div>
     </div>
 
     <div class="card">
@@ -288,13 +289,15 @@
     <div class="modal">
       <div id="wizardStep1">
         <h3>One quick setup step</h3>
-        <p class="hint" style="margin-bottom:16px;">Streakly uses Ollama Cloud (free) to read your food photos and descriptions. You'll need a free API key — takes about 30 seconds.</p>
-        <ol style="font-size:13px;color:var(--text-muted);line-height:1.8;padding-left:18px;margin-bottom:16px;">
-          <li>Tap the link below and sign in (or create a free Ollama account).</li>
-          <li>Click "New API key", give it any name, and copy it.</li>
-          <li>Come back here and paste it in.</li>
+        <p class="hint" style="margin-bottom:16px;">Streakly uses Ollama Cloud (free) to read your food photos and descriptions. You'll need a free API key — takes about a minute.</p>
+        <ol style="font-size:13px;color:var(--text-muted);line-height:1.9;padding-left:18px;margin-bottom:16px;">
+          <li>Tap the button below. If you don't have an Ollama account yet, it'll ask you to sign up first (just an email + password, it's free).</li>
+          <li><strong>After signing up/in</strong>, you may land on Ollama's homepage instead of the keys page — that's normal. Tap the button below <em>again</em> to jump straight to your keys.</li>
+          <li>On the keys page, click <strong>"New API key"</strong>, give it any name (e.g. "Streakly"), then click "Create".</li>
+          <li>Click the copy icon next to the key that appears, come back here, and paste it below.</li>
         </ol>
         <a href="https://ollama.com/settings/keys" target="_blank" rel="noopener" class="btn secondary" style="text-decoration:none;display:block;text-align:center;">Get my free API key ↗</a>
+        <div class="hint" style="text-align:center;margin-top:8px;">Not on the keys page yet? Tap that button again after signing in.</div>
         <button class="btn" id="wizardNextBtn" style="margin-top:12px;">I have my key</button>
         <button class="btn secondary" id="wizardSkipBtn" style="margin-top:10px;">Skip for now</button>
       </div>
